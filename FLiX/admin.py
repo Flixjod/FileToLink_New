@@ -436,10 +436,12 @@ async def revoke_command(client: Client, message: Message):
         return
 
     safe_name = escape_markdown(file_data["file_name"])
+    # Use the shared revoke_<hash> callback so gen.py's cb_revoke_confirm
+    # handles the Yes / No dialog consistently for both the button and command.
     await client.send_message(
         chat_id=message.chat.id,
         text=(
-            f"⚠️ **Warning**\n\n"
+            f"⚠️ **{small_caps('confirm revoke')}**\n\n"
             f"ᴀʀᴇ ʏᴏᴜ ꜱᴜʀᴇ ʏᴏᴜ ᴡᴀɴᴛ ᴛᴏ ᴘᴇʀᴍᴀɴᴇɴᴛʟʏ ʀᴇᴠᴏᴋᴇ:\n\n"
             f"📂 **{small_caps('file')}:** `{safe_name}`\n\n"
             "ᴀʟʟ ʟɪɴᴋꜱ ᴡɪʟʟ ʙᴇᴄᴏᴍᴇ ɪɴᴠᴀʟɪᴅ."
@@ -447,43 +449,11 @@ async def revoke_command(client: Client, message: Message):
         reply_to_message_id=message.id,
         reply_markup=InlineKeyboardMarkup([
             [
-                InlineKeyboardButton("✅ ᴄᴏɴꜰɪʀᴍ", callback_data=f"revoke_confirm_{file_hash}"),
-                InlineKeyboardButton("❌ ᴄᴀɴᴄᴇʟ",  callback_data="revoke_cancel"),
+                InlineKeyboardButton(f"✅ {small_caps('yes')}", callback_data=f"revoke_{file_hash}"),
+                InlineKeyboardButton(f"❌ {small_caps('no')}",  callback_data="revoke_no_1"),
             ]
         ]),
     )
-
-
-@Client.on_callback_query(filters.regex(r"^revoke_confirm_"), group=0)
-async def revoke_confirm_callback(client: Client, callback: CallbackQuery):
-    if not await check_owner(client, callback):
-        return
-
-    file_hash = callback.data.replace("revoke_confirm_", "", 1)
-    file_data = await db.get_file_by_hash(file_hash)
-
-    if not file_data:
-        await callback.answer("❌ ꜰɪʟᴇ ɴᴏᴛ ꜰᴏᴜɴᴅ ᴏʀ ᴀʟʀᴇᴀᴅʏ ᴅᴇʟᴇᴛᴇᴅ", show_alert=True)
-        try:
-            await callback.message.delete()
-        except Exception:
-            pass
-        return
-
-    try:
-        await client.delete_messages(Config.FLOG_CHAT_ID, int(file_data["message_id"]))
-    except Exception as exc:
-        logger.error("revoke delete dump message: msg=%s err=%s", file_data["message_id"], exc)
-
-    await db.delete_file(file_data["message_id"])
-
-    safe_name = escape_markdown(file_data["file_name"])
-    await callback.message.edit_text(
-        f"🗑️ **{small_caps('file revoked successfully')}!**\n\n"
-        f"📂 **{small_caps('file')}:** `{safe_name}`\n\n"
-        "ᴀʟʟ ʟɪɴᴋꜱ ʜᴀᴠᴇ ʙᴇᴇɴ ɪɴᴠᴀʟɪᴅᴀᴛᴇᴅ.",
-    )
-    await callback.answer("✅ ꜰɪʟᴇ ʀᴇᴠᴏᴋᴇᴅ!", show_alert=False)
 
 
 @Client.on_message(filters.command("revokeall") & filters.private, group=2)
