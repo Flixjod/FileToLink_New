@@ -22,9 +22,11 @@ class Bot(Client):
     async def start(self):
         await super().start()
         me = await self.get_me()
-        Config.BOT_USERNAME = me.username  or Config.DEFAULT_BOT_USERNAME
-        Config.BOT_NAME     = me.first_name or Config.DEFAULT_BOT_NAME
-        Config.UPTIME       = time.time()
+        # Persist bot identity for health/stats endpoints
+        self.me                 = me
+        Config.BOT_USERNAME     = me.username   or Config.DEFAULT_BOT_USERNAME
+        Config.BOT_NAME         = me.first_name or Config.DEFAULT_BOT_NAME
+        Config.UPTIME           = time.time()
         logger.info("⚡  ʙᴏᴛ: @%s  │  ɴᴀᴍᴇ: %s  │  ɪᴅ: %s  │  ᴡᴏʀᴋᴇʀs: %s",
                     me.username, me.first_name, me.id, "50")
         await self._resolve_log_channel()
@@ -58,6 +60,7 @@ class Bot(Client):
             BotCommand("help",      "📚 ɢᴇᴛ ʜᴇʟᴘ ɪɴꜰᴏ"),
             BotCommand("about",     "ℹ️ ᴀʙᴏᴜᴛ ᴛʜɪꜱ ʙᴏᴛ"),
             BotCommand("files",     "📂 ᴠɪᴇᴡ ʏᴏᴜʀ ꜰɪʟᴇꜱ"),
+            BotCommand("id",        "🪪 ɢᴇᴛ ʏᴏᴜʀ ᴜꜱᴇʀ & ᴄʜᴀᴛ ɪᴅ"),
         ]
 
         owner_commands = user_commands + [
@@ -68,7 +71,6 @@ class Bot(Client):
             BotCommand("revokeall",    "🗑️ ʙᴜʟᴋ ʀᴇᴠᴏᴋᴇ [ᴀʟʟ | ᴜꜱᴇʀ_ɪᴅ]"),
             BotCommand("logs",         "📄 ɢᴇᴛ ʙᴏᴛ ʟᴏɢꜱ"),
         ]
-
         try:
             await self.set_bot_commands(user_commands)
 

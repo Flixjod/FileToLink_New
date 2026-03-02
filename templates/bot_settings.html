@@ -1,0 +1,864 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ʙᴏᴛ ꜱᴇᴛᴛɪɴɢꜱ | {{ bot_name }}</title>
+  <link rel="icon" href="https://i.ibb.co/KzqHfL05/photo-2026-02-07-13-38-13.jpg">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    html { min-height: 100%; background-color: #764ba2; }
+
+    body {
+      font-family: 'Poppins', sans-serif;
+      background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%) fixed;
+      min-height: 100vh;
+      overflow-x: hidden;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      padding: 30px 16px 60px;
+    }
+
+    /* ── Background Particles ───────────────────────────────── */
+    .bg-animation {
+      position: fixed; top: 0; left: 0;
+      width: 100%; height: 100%;
+      z-index: 0; overflow: hidden; pointer-events: none;
+    }
+    .bg-animation span {
+      position: absolute; display: block;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.06);
+      animation: floatUp 25s linear infinite;
+      bottom: -200px;
+    }
+    .bg-animation span:nth-child(1)  { left:10%; width:40px;  height:40px;  animation-delay:0s;   animation-duration:20s; }
+    .bg-animation span:nth-child(2)  { left:25%; width:15px;  height:15px;  animation-delay:2s;   animation-duration:14s; }
+    .bg-animation span:nth-child(3)  { left:50%; width:60px;  height:60px;  animation-delay:4s;   animation-duration:22s; }
+    .bg-animation span:nth-child(4)  { left:70%; width:20px;  height:20px;  animation-delay:1s;   animation-duration:18s; }
+    .bg-animation span:nth-child(5)  { left:85%; width:80px;  height:80px;  animation-delay:6s;   animation-duration:30s; }
+    .bg-animation span:nth-child(6)  { left:35%; width:25px;  height:25px;  animation-delay:8s;   animation-duration:16s; }
+    .bg-animation span:nth-child(7)  { left:60%; width:12px;  height:12px;  animation-delay:3s;   animation-duration:12s; }
+    .bg-animation span:nth-child(8)  { left:15%; width:90px;  height:90px;  animation-delay:10s;  animation-duration:35s; }
+    .bg-animation span:nth-child(9)  { left:90%; width:30px;  height:30px;  animation-delay:5s;   animation-duration:24s; }
+    .bg-animation span:nth-child(10) { left:45%; width:18px;  height:18px;  animation-delay:12s;  animation-duration:28s; }
+    @keyframes floatUp {
+      0%   { transform: translateY(0) rotate(0deg);     opacity: 0.7; }
+      100% { transform: translateY(-110vh) rotate(720deg); opacity: 0; }
+    }
+
+    /* ── Container / Card ───────────────────────────────────── */
+    .container {
+      position: relative; z-index: 1;
+      width: 100%; max-width: 820px;
+      animation: fadeInDown .7s ease both;
+    }
+    @keyframes fadeInDown {
+      from { opacity:0; transform:translateY(-30px); }
+      to   { opacity:1; transform:translateY(0); }
+    }
+
+    /* ── Header ─────────────────────────────────────────────── */
+    .header {
+      text-align: center;
+      margin-bottom: 28px;
+    }
+    .header-icon {
+      width: 72px; height: 72px;
+      border-radius: 22px;
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 2rem; color: #fff;
+      box-shadow: 0 12px 36px rgba(102,126,234,.5);
+      margin-bottom: 14px;
+      animation: pulse-icon 3s ease-in-out infinite;
+    }
+    @keyframes pulse-icon {
+      0%,100% { box-shadow: 0 12px 36px rgba(102,126,234,.5); transform: scale(1); }
+      50%      { box-shadow: 0 16px 48px rgba(102,126,234,.8); transform: scale(1.04); }
+    }
+    .header h1 {
+      font-size: clamp(1.5rem, 4vw, 2rem);
+      font-weight: 800;
+      color: #fff;
+      letter-spacing: -.3px;
+      margin-bottom: 4px;
+    }
+    .header p { color: rgba(255,255,255,.55); font-size: .9rem; }
+
+    /* ── Tabs ────────────────────────────────────────────────── */
+    .tab-nav {
+      display: flex;
+      background: rgba(255,255,255,.07);
+      border-radius: 18px;
+      padding: 6px;
+      margin-bottom: 24px;
+      gap: 6px;
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255,255,255,.1);
+    }
+    .tab-btn {
+      flex: 1;
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      padding: 12px 10px;
+      border-radius: 13px;
+      border: none; cursor: pointer;
+      font-family: 'Poppins', sans-serif;
+      font-weight: 700; font-size: .82rem;
+      color: rgba(255,255,255,.55);
+      background: transparent;
+      transition: all .3s ease;
+      white-space: nowrap;
+    }
+    .tab-btn i { font-size: 1rem; }
+    .tab-btn.active {
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      color: #fff;
+      box-shadow: 0 6px 20px rgba(102,126,234,.45);
+    }
+    .tab-btn:not(.active):hover {
+      background: rgba(255,255,255,.1);
+      color: rgba(255,255,255,.8);
+    }
+
+    /* ── Panel Card ─────────────────────────────────────────── */
+    .panel {
+      display: none;
+      background: rgba(255,255,255,0.05);
+      backdrop-filter: blur(20px);
+      border-radius: 24px;
+      border: 1px solid rgba(255,255,255,.12);
+      overflow: hidden;
+      box-shadow: 0 24px 64px rgba(0,0,0,.3);
+    }
+    .panel.active { display: block; animation: slideIn .35s ease both; }
+    @keyframes slideIn {
+      from { opacity:0; transform:translateY(12px); }
+      to   { opacity:1; transform:translateY(0); }
+    }
+
+    .panel-header {
+      padding: 28px 32px 20px;
+      border-bottom: 1px solid rgba(255,255,255,.08);
+    }
+    .panel-title {
+      display: flex; align-items: center; gap: 14px;
+    }
+    .panel-title-icon {
+      width: 48px; height: 48px;
+      border-radius: 14px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.3rem; flex-shrink: 0;
+    }
+    .icon-stats  { background: linear-gradient(135deg, #f6d365, #fda085); color: #fff; }
+    .icon-bw     { background: linear-gradient(135deg, #4facfe, #00f2fe); color: #fff; }
+    .icon-health { background: linear-gradient(135deg, #43e97b, #38f9d7); color: #fff; }
+
+    .panel-title h2 {
+      font-size: 1.25rem; font-weight: 800;
+      color: #fff; margin-bottom: 2px;
+    }
+    .panel-title p { color: rgba(255,255,255,.45); font-size: .82rem; }
+
+    .panel-body { padding: 28px 32px; }
+
+    /* ── Stats Grid ─────────────────────────────────────────── */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 16px;
+      margin-bottom: 28px;
+    }
+    .stat-card {
+      background: rgba(255,255,255,.07);
+      border: 1px solid rgba(255,255,255,.1);
+      border-radius: 18px;
+      padding: 22px 16px 18px;
+      text-align: center;
+      transition: transform .25s ease, box-shadow .25s ease;
+    }
+    .stat-card:hover { transform: translateY(-4px); box-shadow: 0 12px 32px rgba(0,0,0,.25); }
+    .stat-icon-wrap {
+      width: 52px; height: 52px;
+      border-radius: 15px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.3rem;
+      margin: 0 auto 12px;
+    }
+    .si-users   { background: linear-gradient(135deg,#667eea,#764ba2); color:#fff; }
+    .si-chats   { background: linear-gradient(135deg,#26a4da,#1e89b8); color:#fff; }
+    .si-files   { background: linear-gradient(135deg,#f6d365,#fda085); color:#fff; }
+    .si-ram     { background: linear-gradient(135deg,#43e97b,#38f9d7); color:#fff; }
+    .si-cpu     { background: linear-gradient(135deg,#fa709a,#fee140); color:#fff; }
+    .si-uptime  { background: linear-gradient(135deg,#4facfe,#00f2fe); color:#fff; }
+
+    .stat-value {
+      font-size: 1.55rem; font-weight: 800;
+      color: #fff; line-height: 1; margin-bottom: 4px;
+    }
+    .stat-label {
+      font-size: .72rem; color: rgba(255,255,255,.45);
+      font-weight: 600; text-transform: uppercase; letter-spacing: .6px;
+    }
+
+    /* ── Progress Bar (BW) ──────────────────────────────────── */
+    .bw-usage-block { margin-bottom: 24px; }
+    .bw-header {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 8px;
+    }
+    .bw-label { font-weight: 700; color: rgba(255,255,255,.8); font-size: .9rem; }
+    .bw-pct   { font-weight: 800; color: #4facfe; font-size: .9rem; }
+    .bw-bar-bg {
+      height: 10px;
+      background: rgba(255,255,255,.1);
+      border-radius: 999px; overflow: hidden; margin-bottom: 6px;
+    }
+    .bw-bar-fill {
+      height: 100%;
+      border-radius: 999px;
+      background: linear-gradient(90deg, #4facfe, #00f2fe);
+      transition: width 1.2s cubic-bezier(.4,0,.2,1);
+    }
+    .bw-bar-fill.warn  { background: linear-gradient(90deg,#f6d365,#fda085); }
+    .bw-bar-fill.crit  { background: linear-gradient(90deg,#ff6b6b,#ee0979); }
+    .bw-meta {
+      display: flex; justify-content: space-between;
+      font-size: .78rem; color: rgba(255,255,255,.35);
+    }
+
+    /* ── Info Rows (BW + Health) ────────────────────────────── */
+    .info-section { margin-bottom: 24px; }
+    .info-section-title {
+      font-size: .75rem; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 1px;
+      color: rgba(255,255,255,.35);
+      margin-bottom: 12px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .info-section-title::after {
+      content: '';
+      flex: 1; height: 1px;
+      background: rgba(255,255,255,.08);
+    }
+    .info-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 12px 0;
+      border-bottom: 1px solid rgba(255,255,255,.06);
+    }
+    .info-row:last-child { border-bottom: none; }
+    .info-label {
+      display: flex; align-items: center; gap: 10px;
+      color: rgba(255,255,255,.6); font-size: .88rem; font-weight: 500;
+    }
+    .info-label .il-icon {
+      width: 32px; height: 32px;
+      border-radius: 9px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: .8rem; flex-shrink: 0;
+    }
+    .info-value { font-weight: 700; color: #fff; font-size: .9rem; }
+    .badge {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 4px 12px; border-radius: 999px;
+      font-size: .75rem; font-weight: 700;
+    }
+    .badge::before { content:''; width:7px; height:7px; border-radius:50%; }
+    .badge-ok      { background:rgba(67,233,123,.12); color:#43e97b; }
+    .badge-ok::before      { background:#43e97b; box-shadow:0 0 6px #43e97b; }
+    .badge-warn    { background:rgba(246,211,101,.12); color:#f6d365; }
+    .badge-warn::before    { background:#f6d365; }
+    .badge-init    { background:rgba(79,172,254,.12); color:#4facfe; }
+    .badge-init::before    { background:#4facfe; animation:blink 1s ease-in-out infinite; }
+    .badge-error   { background:rgba(255,107,107,.12); color:#ff6b6b; }
+    .badge-error::before   { background:#ff6b6b; }
+    @keyframes blink { 0%,100%{opacity:1;} 50%{opacity:.3;} }
+
+    /* ── Health Live dot ────────────────────────────────────── */
+    .live-indicator {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: .72rem; font-weight: 700;
+      color: #43e97b;
+      background: rgba(67,233,123,.1);
+      padding: 3px 10px; border-radius: 999px;
+    }
+    .live-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: #43e97b;
+      animation: live-pulse 1.5s ease-in-out infinite;
+    }
+    @keyframes live-pulse {
+      0%,100%{ transform:scale(1); opacity:1; }
+      50%    { transform:scale(1.5); opacity:.6; }
+    }
+
+    /* ── Latency Meter ──────────────────────────────────────── */
+    .latency-bar-wrap {
+      display: flex; align-items: center; gap: 10px; width: 100%;
+    }
+    .latency-bar-bg {
+      flex:1; height: 6px;
+      background: rgba(255,255,255,.08);
+      border-radius: 999px; overflow: hidden;
+    }
+    .latency-bar-fill {
+      height: 100%; border-radius: 999px;
+      background: linear-gradient(90deg,#43e97b,#4facfe);
+      transition: width .5s ease;
+    }
+    .latency-val {
+      font-weight: 800; color: #43e97b;
+      font-size: .88rem; min-width: 55px; text-align: right;
+    }
+    .latency-val.warn { color: #f6d365; }
+    .latency-val.crit { color: #ff6b6b; }
+
+    /* ── Bot Avatar Row ─────────────────────────────────────── */
+    .bot-avatar-row {
+      display: flex; align-items: center; gap: 18px;
+      padding: 20px 24px;
+      background: rgba(255,255,255,.05);
+      border-radius: 18px;
+      border: 1px solid rgba(255,255,255,.08);
+      margin-bottom: 24px;
+    }
+    .bot-avatar {
+      width: 58px; height: 58px;
+      border-radius: 50%;
+      background: linear-gradient(135deg,#667eea,#764ba2);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.6rem; color: #fff; flex-shrink: 0;
+      box-shadow: 0 0 0 3px rgba(102,126,234,.35);
+    }
+    .bot-info-text h3 {
+      font-size: 1rem; font-weight: 800; color: #fff; margin-bottom: 2px;
+    }
+    .bot-info-text span { color: rgba(255,255,255,.45); font-size: .82rem; }
+    .bot-status-badge { margin-left: auto; flex-shrink: 0; }
+
+    /* ── Action Buttons ─────────────────────────────────────── */
+    .btn-row {
+      display: flex; flex-wrap: wrap; justify-content: center;
+      gap: 12px; margin-top: 28px;
+    }
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 12px 26px; border-radius: 50px;
+      font-weight: 700; font-size: .85rem;
+      text-decoration: none; border: none; cursor: pointer;
+      transition: all .3s ease; font-family: 'Poppins', sans-serif;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg,#667eea,#764ba2);
+      color: #fff;
+      box-shadow: 0 8px 24px rgba(102,126,234,.4);
+    }
+    .btn-primary:hover { transform:translateY(-3px); box-shadow:0 12px 32px rgba(102,126,234,.55); }
+    .btn-tg {
+      background: linear-gradient(135deg,#26a4da,#1e89b8);
+      color: #fff;
+      box-shadow: 0 8px 24px rgba(38,164,218,.35);
+    }
+    .btn-tg:hover { transform:translateY(-3px); box-shadow:0 12px 32px rgba(38,164,218,.45); }
+    .btn-refresh {
+      background: rgba(255,255,255,.08);
+      color: rgba(255,255,255,.7);
+      border: 1px solid rgba(255,255,255,.15);
+    }
+    .btn-refresh:hover { background: rgba(255,255,255,.14); color:#fff; }
+
+    /* ── Footer ─────────────────────────────────────────────── */
+    .footer-note {
+      margin-top: 26px;
+      color: rgba(255,255,255,.35);
+      font-size: .82rem;
+      text-align: center;
+    }
+    .footer-note a { color: rgba(255,215,0,.75); text-decoration: none; font-weight: 700; }
+    .footer-note a:hover { color: #ffd700; }
+
+    /* ── Spinner ─────────────────────────────────────────────── */
+    .spin { animation: rotate 1s linear infinite; }
+    @keyframes rotate { to { transform: rotate(360deg); } }
+
+    /* ── Responsive ─────────────────────────────────────────── */
+    @media (max-width: 600px) {
+      .panel-header, .panel-body { padding: 20px 18px; }
+      .tab-btn span { display: none; }
+      .tab-btn i { font-size: 1.2rem; }
+      .stats-grid { grid-template-columns: repeat(2, 1fr); }
+      .btn-row { flex-direction: column; align-items: stretch; }
+      .btn { justify-content: center; }
+    }
+  </style>
+</head>
+<body>
+  <!-- Particles -->
+  <div class="bg-animation">
+    <span></span><span></span><span></span><span></span><span></span>
+    <span></span><span></span><span></span><span></span><span></span>
+  </div>
+
+  <div class="container">
+
+    <!-- ── Header ─────────────────────────────────────────── -->
+    <div class="header">
+      <div class="header-icon"><i class="fa-solid fa-robot"></i></div>
+      <h1>⚙️ ʙᴏᴛ ᴄᴏɴᴛʀᴏʟ ᴘᴀɴᴇʟ</h1>
+      <p>{{ bot_name }} &nbsp;·&nbsp; @{{ bot_username }}</p>
+    </div>
+
+    <!-- ── Tab Navigation ─────────────────────────────────── -->
+    <div class="tab-nav" role="tablist">
+      <button class="tab-btn active" role="tab" onclick="switchTab('stats', this)" id="tab-stats">
+        <i class="fa-solid fa-chart-pie"></i>
+        <span>📊 ꜱᴛᴀᴛꜱ</span>
+      </button>
+      <button class="tab-btn" role="tab" onclick="switchTab('bandwidth', this)" id="tab-bandwidth">
+        <i class="fa-solid fa-satellite-dish"></i>
+        <span>📡 ʙᴀɴᴅᴡɪᴅᴛʜ</span>
+      </button>
+      <button class="tab-btn" role="tab" onclick="switchTab('health', this)" id="tab-health">
+        <i class="fa-solid fa-heart-pulse"></i>
+        <span>❤️ ʜᴇᴀʟᴛʜ</span>
+      </button>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════
+         📊  STATS PANEL
+    ══════════════════════════════════════════════════════ -->
+    <div class="panel active" id="panel-stats">
+      <div class="panel-header">
+        <div class="panel-title">
+          <div class="panel-title-icon icon-stats">
+            <i class="fa-solid fa-chart-column"></i>
+          </div>
+          <div>
+            <h2>ʙᴏᴛ ꜱᴛᴀᴛɪꜱᴛɪᴄꜱ</h2>
+            <p>ʟɪᴠᴇ ᴅᴀᴛᴀ · ʀᴇꜰʀᴇꜱʜᴇꜱ ᴇᴠᴇʀʏ 30s</p>
+          </div>
+        </div>
+      </div>
+      <div class="panel-body">
+
+        <!-- 6-card grid -->
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-icon-wrap si-users"><i class="fa-solid fa-users"></i></div>
+            <div class="stat-value" id="s-users">{{ total_users }}</div>
+            <div class="stat-label">ᴛᴏᴛᴀʟ ᴜꜱᴇʀꜱ</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon-wrap si-chats"><i class="fa-solid fa-comments"></i></div>
+            <div class="stat-value" id="s-chats">{{ total_chats }}</div>
+            <div class="stat-label">ᴛᴏᴛᴀʟ ᴄʜᴀᴛꜱ</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon-wrap si-files"><i class="fa-solid fa-folder-open"></i></div>
+            <div class="stat-value" id="s-files">{{ total_files }}</div>
+            <div class="stat-label">ᴛᴏᴛᴀʟ ꜰɪʟᴇꜱ</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon-wrap si-ram"><i class="fa-solid fa-memory"></i></div>
+            <div class="stat-value" id="s-ram">{{ ram_used }}</div>
+            <div class="stat-label">ʀᴀᴍ ᴜꜱᴀɢᴇ</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon-wrap si-cpu"><i class="fa-solid fa-microchip"></i></div>
+            <div class="stat-value" id="s-cpu">{{ cpu_pct }}%</div>
+            <div class="stat-label">ᴄᴘᴜ ᴜꜱᴀɢᴇ</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon-wrap si-uptime"><i class="fa-solid fa-clock-rotate-left"></i></div>
+            <div class="stat-value" id="s-uptime" style="font-size:1.05rem;">{{ uptime }}</div>
+            <div class="stat-label">ʙᴏᴛ ᴜᴘᴛɪᴍᴇ</div>
+          </div>
+        </div>
+
+        <!-- Bandwidth bar inside stats -->
+        <div class="bw-usage-block">
+          <div class="bw-header">
+            <span class="bw-label"><i class="fa-solid fa-signal" style="margin-right:6px;opacity:.6;"></i>ʙᴀɴᴅᴡɪᴅᴛʜ ᴜꜱᴀɢᴇ</span>
+            <span class="bw-pct" id="s-bwpct">{{ bw_pct }}%</span>
+          </div>
+          <div class="bw-bar-bg">
+            <div class="bw-bar-fill {% if bw_pct > 90 %}crit{% elif bw_pct > 70 %}warn{% endif %}"
+                 id="s-bwbar" style="width:{{ bw_pct }}%;"></div>
+          </div>
+          <div class="bw-meta">
+            <span id="s-bwused">{{ bw_used }} ᴜꜱᴇᴅ</span>
+            <span id="s-bwlimit">{{ bw_limit }} ʟɪᴍɪᴛ</span>
+          </div>
+        </div>
+
+        <div class="btn-row">
+          <a href="/" class="btn btn-primary"><i class="fa-solid fa-house"></i> ʜᴏᴍᴇ</a>
+          <a href="https://t.me/{{ bot_username }}" target="_blank" class="btn btn-tg">
+            <i class="fa-brands fa-telegram"></i> ᴏᴘᴇɴ ʙᴏᴛ
+          </a>
+          <button class="btn btn-refresh" onclick="refreshStats()">
+            <i class="fa-solid fa-rotate-right" id="stats-refresh-icon"></i> ʀᴇꜰʀᴇꜱʜ
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════
+         📡  BANDWIDTH PANEL
+    ══════════════════════════════════════════════════════ -->
+    <div class="panel" id="panel-bandwidth">
+      <div class="panel-header">
+        <div class="panel-title">
+          <div class="panel-title-icon icon-bw">
+            <i class="fa-solid fa-satellite-dish"></i>
+          </div>
+          <div>
+            <h2>ʙᴀɴᴅᴡɪᴅᴛʜ ɪɴꜰᴏ</h2>
+            <p>ᴅᴀᴛᴀ ᴛʀᴀɴꜱꜰᴇʀ ᴏᴠᴇʀᴠɪᴇᴡ</p>
+          </div>
+        </div>
+      </div>
+      <div class="panel-body">
+
+        <div class="info-section">
+          <div class="info-section-title"><i class="fa-solid fa-circle-info"></i> ᴄᴜʀʀᴇɴᴛ ꜱᴛᴀᴛᴜꜱ</div>
+          <div class="info-row">
+            <span class="info-label">
+              <span class="il-icon" style="background:rgba(102,126,234,.2)"><i class="fa-solid fa-toggle-on" style="color:#667eea"></i></span>
+              ʙᴡ ᴍᴏᴅᴇ
+            </span>
+            <span class="badge {{ 'badge-ok' if bw_mode else 'badge-error' }}" id="bw-mode-badge">
+              {{ 'ᴀᴄᴛɪᴠᴇ' if bw_mode else 'ɪɴᴀᴄᴛɪᴠᴇ' }}
+            </span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">
+              <span class="il-icon" style="background:rgba(79,172,254,.2)"><i class="fa-solid fa-gauge-high" style="color:#4facfe"></i></span>
+              ʟɪᴍɪᴛ
+            </span>
+            <span class="info-value" id="bw-limit">{{ bw_limit }}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">
+              <span class="il-icon" style="background:rgba(246,211,101,.2)"><i class="fa-solid fa-upload" style="color:#f6d365"></i></span>
+              ᴜꜱᴇᴅ (ᴛᴏᴛᴀʟ)
+            </span>
+            <span class="info-value" id="bw-used">{{ bw_used }}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">
+              <span class="il-icon" style="background:rgba(250,112,154,.2)"><i class="fa-solid fa-calendar-day" style="color:#fa709a"></i></span>
+              ᴜꜱᴇᴅ ᴛᴏᴅᴀʏ
+            </span>
+            <span class="info-value" id="bw-today">{{ bw_today }}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">
+              <span class="il-icon" style="background:rgba(67,233,123,.2)"><i class="fa-solid fa-battery-three-quarters" style="color:#43e97b"></i></span>
+              ʀᴇᴍᴀɪɴɪɴɢ
+            </span>
+            <span class="info-value" id="bw-remaining">{{ bw_remaining }}</span>
+          </div>
+        </div>
+
+        <!-- Progress bar -->
+        <div class="bw-usage-block">
+          <div class="bw-header">
+            <span class="bw-label">ᴜꜱᴀɢᴇ ᴘʀᴏɢʀᴇꜱꜱ</span>
+            <span class="bw-pct" id="bw-pct">{{ bw_pct }}%</span>
+          </div>
+          <div class="bw-bar-bg">
+            <div class="bw-bar-fill {% if bw_pct > 90 %}crit{% elif bw_pct > 70 %}warn{% endif %}"
+                 id="bw-bar" style="width:{{ bw_pct }}%;"></div>
+          </div>
+          <div class="bw-meta">
+            <span id="bw-meta-used">{{ bw_used }} ᴜꜱᴇᴅ</span>
+            <span id="bw-meta-limit">{{ bw_limit }} ᴛᴏᴛᴀʟ</span>
+          </div>
+        </div>
+
+        <div class="btn-row">
+          <a href="/" class="btn btn-primary"><i class="fa-solid fa-house"></i> ʜᴏᴍᴇ</a>
+          <a href="https://t.me/{{ bot_username }}" target="_blank" class="btn btn-tg">
+            <i class="fa-brands fa-telegram"></i> ᴏᴘᴇɴ ʙᴏᴛ
+          </a>
+          <button class="btn btn-refresh" onclick="refreshBandwidth()">
+            <i class="fa-solid fa-rotate-right" id="bw-refresh-icon"></i> ʀᴇꜰʀᴇꜱʜ
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════
+         ❤️  HEALTH PANEL
+    ══════════════════════════════════════════════════════ -->
+    <div class="panel" id="panel-health">
+      <div class="panel-header">
+        <div class="panel-title">
+          <div class="panel-title-icon icon-health">
+            <i class="fa-solid fa-heart-pulse"></i>
+          </div>
+          <div style="flex:1;">
+            <h2>ꜱʏꜱᴛᴇᴍ ʜᴇᴀʟᴛʜ</h2>
+            <p>ʀᴇᴀʟ-ᴛɪᴍᴇ ᴍᴏɴɪᴛᴏʀɪɴɢ</p>
+          </div>
+          <div class="live-indicator">
+            <span class="live-dot"></span> ʟɪᴠᴇ
+          </div>
+        </div>
+      </div>
+      <div class="panel-body">
+
+        <!-- Bot Identity Card -->
+        <div class="bot-avatar-row">
+          <div class="bot-avatar"><i class="fa-solid fa-robot"></i></div>
+          <div class="bot-info-text">
+            <h3 id="h-botname">{{ bot_name }}</h3>
+            <span>@<span id="h-username">{{ bot_username }}</span> · ID: <span id="h-botid">{{ bot_id }}</span></span>
+          </div>
+          <div class="bot-status-badge">
+            <span class="badge badge-ok" id="h-bot-status-badge">ʀᴜɴɴɪɴɢ</span>
+          </div>
+        </div>
+
+        <!-- Bot Information -->
+        <div class="info-section">
+          <div class="info-section-title"><i class="fa-solid fa-robot"></i> ʙᴏᴛ ɪɴꜰᴏʀᴍᴀᴛɪᴏɴ</div>
+          <div class="info-row">
+            <span class="info-label">
+              <span class="il-icon" style="background:rgba(102,126,234,.2)"><i class="fa-solid fa-signature" style="color:#667eea"></i></span>
+              ʙᴏᴛ ɴᴀᴍᴇ
+            </span>
+            <span class="info-value" id="h-name">{{ bot_name }}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">
+              <span class="il-icon" style="background:rgba(38,164,218,.2)"><i class="fa-solid fa-at" style="color:#26a4da"></i></span>
+              ᴜꜱᴇʀɴᴀᴍᴇ
+            </span>
+            <span class="info-value">@<span id="h-uname">{{ bot_username }}</span></span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">
+              <span class="il-icon" style="background:rgba(246,211,101,.2)"><i class="fa-solid fa-id-badge" style="color:#f6d365"></i></span>
+              ʙᴏᴛ ɪᴅ
+            </span>
+            <span class="info-value" id="h-id">{{ bot_id }}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">
+              <span class="il-icon" style="background:rgba(250,112,154,.2)"><i class="fa-solid fa-server" style="color:#fa709a"></i></span>
+              ᴅᴀᴛᴀᴄᴇɴᴛᴇʀ
+            </span>
+            <span class="info-value" id="h-dc">DC{{ bot_dc }}</span>
+          </div>
+        </div>
+
+        <!-- Real-time Server Data -->
+        <div class="info-section">
+          <div class="info-section-title"><i class="fa-solid fa-satellite-dish"></i> ʀᴇᴀʟ-ᴛɪᴍᴇ ꜱᴇʀᴠᴇʀ ᴅᴀᴛᴀ</div>
+          <div class="info-row">
+            <span class="info-label">
+              <span class="il-icon" style="background:rgba(67,233,123,.2)"><i class="fa-solid fa-circle-check" style="color:#43e97b"></i></span>
+              ꜱᴇʀᴠᴇʀ ꜱᴛᴀᴛᴜꜱ
+            </span>
+            <span class="badge badge-ok" id="h-server">ᴏɴʟɪɴᴇ</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">
+              <span class="il-icon" style="background:rgba(38,164,218,.2)"><i class="fa-brands fa-telegram" style="color:#26a4da"></i></span>
+              ʙᴏᴛ ᴀᴘɪ ꜱᴛᴀᴛᴜꜱ
+            </span>
+            <span class="badge badge-ok" id="h-api">ᴏᴘᴇʀᴀᴛɪᴏɴᴀʟ</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">
+              <span class="il-icon" style="background:rgba(246,211,101,.2)"><i class="fa-solid fa-bolt" style="color:#f6d365"></i></span>
+              ꜰʟᴏᴏᴅ ꜱᴛᴀᴛᴜꜱ
+            </span>
+            <span class="badge badge-ok" id="h-flood">ᴄʟᴇᴀʀ</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">
+              <span class="il-icon" style="background:rgba(79,172,254,.2)"><i class="fa-solid fa-gauge" style="color:#4facfe"></i></span>
+              ʀᴇꜱᴘᴏɴꜱᴇ ʟᴀᴛᴇɴᴄʏ
+            </span>
+            <div class="latency-bar-wrap">
+              <div class="latency-bar-bg">
+                <div class="latency-bar-fill" id="h-latency-bar" style="width:5%;"></div>
+              </div>
+              <span class="latency-val" id="h-latency">—</span>
+            </div>
+          </div>
+          <div class="info-row">
+            <span class="info-label">
+              <span class="il-icon" style="background:rgba(250,112,154,.2)"><i class="fa-solid fa-plug" style="color:#fa709a"></i></span>
+              ᴀᴄᴛɪᴠᴇ ᴄᴏɴɴᴇᴄᴛɪᴏɴꜱ
+            </span>
+            <span class="info-value" id="h-conns">{{ active_conns }}</span>
+          </div>
+        </div>
+
+        <div class="btn-row">
+          <a href="/" class="btn btn-primary"><i class="fa-solid fa-house"></i> ʜᴏᴍᴇ</a>
+          <a href="https://t.me/{{ bot_username }}" target="_blank" class="btn btn-tg">
+            <i class="fa-brands fa-telegram"></i> ᴏᴘᴇɴ ʙᴏᴛ
+          </a>
+          <button class="btn btn-refresh" onclick="refreshHealth()">
+            <i class="fa-solid fa-rotate-right" id="health-refresh-icon"></i> ʀᴇꜰʀᴇꜱʜ
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer-note">
+      ᴘᴏᴡᴇʀᴇᴅ ʙʏ <a href="https://t.me/{{ bot_username }}">{{ bot_name }}</a> &nbsp;·&nbsp;
+      ᴄʀᴇᴀᴛᴇᴅ ᴡɪᴛʜ ❤️ ʙʏ <a href="https://t.me/FLiX_LY" target="_blank">@FLiX_LY</a>
+    </div>
+  </div><!-- /container -->
+
+  <script>
+  // ── Tab switching ──────────────────────────────────────────
+  function switchTab(name, btn) {
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('panel-' + name).classList.add('active');
+    btn.classList.add('active');
+    if (name === 'health') startHealthUpdates();
+  }
+
+  // ── Helpers ────────────────────────────────────────────────
+  function spinIcon(id) {
+    const el = document.getElementById(id);
+    if (el) el.classList.add('spin');
+    return el;
+  }
+  function stopSpin(el) { if (el) el.classList.remove('spin'); }
+
+  // ── Stats refresh ──────────────────────────────────────────
+  async function refreshStats() {
+    const ico = spinIcon('stats-refresh-icon');
+    try {
+      const r = await fetch('/api/stats');
+      if (!r.ok) throw new Error(r.statusText);
+      const d = await r.json();
+      document.getElementById('s-users').textContent  = d.total_users  ?? '—';
+      document.getElementById('s-chats').textContent  = d.total_chats  ?? '—';
+      document.getElementById('s-files').textContent  = d.total_files  ?? '—';
+      document.getElementById('s-ram').textContent    = d.ram_used     ?? '—';
+      document.getElementById('s-cpu').textContent    = (d.cpu_pct != null ? d.cpu_pct + '%' : '—');
+      document.getElementById('s-uptime').textContent = d.uptime       ?? '—';
+      // bw bar
+      const pct = d.bw_pct ?? 0;
+      document.getElementById('s-bwpct').textContent  = pct + '%';
+      document.getElementById('s-bwused').textContent = (d.bw_used ?? '—') + ' ᴜꜱᴇᴅ';
+      document.getElementById('s-bwlimit').textContent= (d.bw_limit ?? '—') + ' ʟɪᴍɪᴛ';
+      const bar = document.getElementById('s-bwbar');
+      bar.style.width = pct + '%';
+      bar.className = 'bw-bar-fill' + (pct > 90 ? ' crit' : pct > 70 ? ' warn' : '');
+    } catch(e) { console.warn('stats refresh failed:', e); }
+    stopSpin(ico);
+  }
+
+  // ── Bandwidth refresh ──────────────────────────────────────
+  async function refreshBandwidth() {
+    const ico = spinIcon('bw-refresh-icon');
+    try {
+      const r = await fetch('/api/bandwidth');
+      if (!r.ok) throw new Error(r.statusText);
+      const d = await r.json();
+      const f = d.formatted || {};
+      document.getElementById('bw-limit').textContent      = f.limit      ?? '—';
+      document.getElementById('bw-used').textContent       = f.total_bandwidth ?? '—';
+      document.getElementById('bw-today').textContent      = f.today_bandwidth ?? '—';
+      document.getElementById('bw-remaining').textContent  = f.remaining   ?? '—';
+      const pct = d.percentage ?? 0;
+      document.getElementById('bw-pct').textContent        = pct + '%';
+      document.getElementById('bw-meta-used').textContent  = (f.total_bandwidth ?? '—') + ' ᴜꜱᴇᴅ';
+      document.getElementById('bw-meta-limit').textContent = (f.limit ?? '—') + ' ᴛᴏᴛᴀʟ';
+      const bar = document.getElementById('bw-bar');
+      bar.style.width = pct + '%';
+      bar.className = 'bw-bar-fill' + (pct > 90 ? ' crit' : pct > 70 ? ' warn' : '');
+      const mode = document.getElementById('bw-mode-badge');
+      if (mode) {
+        mode.className = 'badge ' + (d.bandwidth_mode ? 'badge-ok' : 'badge-error');
+        mode.textContent = d.bandwidth_mode ? 'ᴀᴄᴛɪᴠᴇ' : 'ɪɴᴀᴄᴛɪᴠᴇ';
+      }
+    } catch(e) { console.warn('bw refresh failed:', e); }
+    stopSpin(ico);
+  }
+
+  // ── Health refresh ─────────────────────────────────────────
+  let _healthTimer = null;
+
+  function setBadge(id, cls, txt) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.className = 'badge ' + cls;
+    el.textContent = txt;
+  }
+
+  async function refreshHealth() {
+    const ico = spinIcon('health-refresh-icon');
+    const t0  = performance.now();
+    try {
+      const r = await fetch('/api/health');
+      const latency = Math.round(performance.now() - t0);
+      if (!r.ok) throw new Error(r.statusText);
+      const d = await r.json();
+
+      // Bot info
+      document.getElementById('h-botname').textContent = d.bot_name ?? '—';
+      document.getElementById('h-username').textContent = d.bot_username ?? '—';
+      document.getElementById('h-uname').textContent    = d.bot_username ?? '—';
+      document.getElementById('h-id').textContent       = d.bot_id ?? '—';
+      document.getElementById('h-botid').textContent    = d.bot_id ?? '—';
+      document.getElementById('h-dc').textContent       = 'DC' + (d.bot_dc ?? '?');
+      document.getElementById('h-name').textContent     = d.bot_name ?? '—';
+      document.getElementById('h-conns').textContent    = d.active_conns ?? '—';
+
+      // Server status
+      setBadge('h-server',     'badge-ok',  'ᴏɴʟɪɴᴇ');
+      setBadge('h-api',        'badge-ok',  'ᴏᴘᴇʀᴀᴛɪᴏɴᴀʟ');
+      setBadge('h-flood',      'badge-ok',  'ᴄʟᴇᴀʀ');
+
+      // Bot status
+      const botOk = d.bot_status === 'running';
+      setBadge('h-bot-status-badge',
+               botOk ? 'badge-ok' : 'badge-init',
+               botOk ? 'ʀᴜɴɴɪɴɢ' : 'ɪɴɪᴛɪᴀʟɪᴢɪɴɢ');
+
+      // Latency
+      const latEl  = document.getElementById('h-latency');
+      const barEl  = document.getElementById('h-latency-bar');
+      latEl.textContent = latency + ' ᴍꜱ';
+      latEl.className   = 'latency-val' + (latency > 500 ? ' crit' : latency > 200 ? ' warn' : '');
+      // bar: map 0–1000ms → 0–100%
+      const pct = Math.min(100, (latency / 1000) * 100);
+      barEl.style.width = pct + '%';
+
+    } catch(e) {
+      setBadge('h-server', 'badge-error', 'ᴏꜰꜰʟɪɴᴇ');
+      setBadge('h-api',    'badge-error', 'ᴅᴏᴡɴ');
+      console.warn('health refresh failed:', e);
+    }
+    stopSpin(ico);
+  }
+
+  function startHealthUpdates() {
+    refreshHealth();
+    if (_healthTimer) return;
+    _healthTimer = setInterval(refreshHealth, 5000);
+  }
+
+  // ── Auto-refresh stats & bw every 30s ─────────────────────
+  refreshStats();   // initial load update
+  setInterval(refreshStats,    30000);
+  setInterval(refreshBandwidth, 30000);
+  </script>
+</body>
+</html>

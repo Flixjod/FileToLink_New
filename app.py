@@ -1,7 +1,10 @@
 import json
 import logging
+import time
+import asyncio
 from pathlib import Path
 
+import psutil
 from aiohttp import web
 import aiohttp_jinja2
 import jinja2
@@ -14,6 +17,9 @@ from helper import StreamingService, check_bandwidth_limit, format_size
 logger = logging.getLogger(__name__)
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
+
+# Track active streaming connections
+_active_connections = 0
 
 
 def build_app(bot: Bot, database) -> web.Application:
@@ -114,7 +120,97 @@ def build_app(bot: Bot, database) -> web.Application:
         file_hash = request.match_info["file_hash"]
         return await streaming_service.stream_file(request, file_hash, is_download=True)
 
-    async def stats_endpoint(request: web.Request):
+    # ─────────────────────────────────────────────────────────
+    # Helper: gather all stats for the unified panel
+    # ─────────────────────────────────────────────────────────
+    async def _collect_panel_data():
+        """Return a dict with all data needed for the bot_settings panel."""
+        try:
+            stats    = await database.get_stats()
+            bw_stats = await database.get_bandwidth_stats()
+        except Exception:
+            stats    = {"total_users": 0, "total_files": 0}
+            bw_stats = {"total_bandwidth": 0, "today_bandwidth": 0}
+
+        max_bw    = Config.get("max_bandwidth", 107374182400)
+        bw_mode   = Config.get("bandwidth_mode", True)
+        bw_used   = bw_stats["total_bandwidth"]
+        bw_today  = bw_stats["today_bandwidth"]
+        remaining = max(0, max_bw - bw_used)
+        bw_pct    = round((bw_used / max_bw * 100) if max_bw else 0, 1)
+
+        # System metrics
+        try:
+            ram     = psutil.virtual_memory()
+            ram_pct = ram.percent
+            ram_used_fmt = format_size(ram.used)
+            cpu_pct = psutil.cpu_percent(interval=None)
+        except Exception:
+            ram_pct      = 0
+            ram_used_fmt = "N/A"
+            cpu_pct      = 0
+
+        # Uptime
+        uptime_seconds = time.time() - Config.UPTIME if Config.UPTIME else 0
+        uptime_str     = _format_uptime(uptime_seconds)
+
+        # Bot info
+        bot_me  = getattr(bot, "me", None)
+        bot_id  = str(bot_me.id)   if bot_me else "N/A"
+        bot_dc  = str(bot_me.dc_id) if bot_me else "N/A"
+
+        return {
+            "bot_name":     Config.BOT_NAME     or Config.DEFAULT_BOT_NAME,
+            "bot_username": Config.BOT_USERNAME or Config.DEFAULT_BOT_USERNAME,
+            "bot_id":       bot_id,
+            "bot_dc":       bot_dc,
+            # Stats
+            "total_users":  stats.get("total_users",  0),
+            "total_chats":  stats.get("total_users",  0),  # chats ≈ unique users
+            "total_files":  stats.get("total_files",  0),
+            "ram_used":     ram_used_fmt,
+            "ram_pct":      ram_pct,
+            "cpu_pct":      cpu_pct,
+            "uptime":       uptime_str,
+            # Bandwidth
+            "bw_mode":      bw_mode,
+            "bw_limit":     format_size(max_bw),
+            "bw_used":      format_size(bw_used),
+            "bw_today":     format_size(bw_today),
+            "bw_remaining": format_size(remaining),
+            "bw_pct":       bw_pct,
+            # Health / live
+            "bot_status":   "running" if Config.BOT_USERNAME else "initializing",
+            "active_conns": _active_connections,
+        }
+
+    def _format_uptime(seconds: float) -> str:
+        seconds = int(seconds)
+        d, seconds = divmod(seconds, 86400)
+        h, seconds = divmod(seconds, 3600)
+        m, s       = divmod(seconds, 60)
+        parts = []
+        if d: parts.append(f"{d}d")
+        if h: parts.append(f"{h}h")
+        if m: parts.append(f"{m}m")
+        parts.append(f"{s}s")
+        return " ".join(parts)
+
+    # ─────────────────────────────────────────────────────────
+    # /bot_settings  — unified HTML panel
+    # ─────────────────────────────────────────────────────────
+    async def bot_settings_page(request: web.Request):
+        try:
+            ctx = await _collect_panel_data()
+            return aiohttp_jinja2.render_template("bot_settings.html", request, ctx)
+        except Exception as exc:
+            logger.error("bot_settings page error: %s", exc)
+            return web.Response(status=500, text="Internal server error")
+
+    # ─────────────────────────────────────────────────────────
+    # JSON API: /api/stats
+    # ─────────────────────────────────────────────────────────
+    async def api_stats(request: web.Request):
         try:
             stats    = await database.get_stats()
             bw_stats = await database.get_bandwidth_stats()
@@ -123,105 +219,127 @@ def build_app(bot: Bot, database) -> web.Application:
             bw_today = bw_stats["today_bandwidth"]
             bw_pct   = round((bw_used / max_bw * 100) if max_bw else 0, 1)
 
-            # Return JSON when explicitly requested
-            if "application/json" in request.headers.get("Accept", ""):
-                stats["formatted"] = {
-                    "total_bandwidth": format_size(bw_used),
-                    "today_bandwidth": format_size(bw_today),
-                }
-                return web.Response(text=json.dumps(stats), content_type="application/json")
+            try:
+                ram     = psutil.virtual_memory()
+                cpu_pct = psutil.cpu_percent(interval=None)
+                ram_used_fmt = format_size(ram.used)
+            except Exception:
+                cpu_pct      = 0
+                ram_used_fmt = "N/A"
 
-            return aiohttp_jinja2.render_template(
-                "stats.html",
-                request,
-                {
-                    "bot_name":     Config.BOT_NAME     or Config.DEFAULT_BOT_NAME,
-                    "bot_username": Config.BOT_USERNAME or Config.DEFAULT_BOT_USERNAME,
-                    "total_users":  stats["total_users"],
-                    "total_files":  stats["total_files"],
-                    "bw_used":      format_size(bw_used),
-                    "bw_today":     format_size(bw_today),
-                    "bw_limit":     format_size(max_bw),
-                    "bw_pct":       bw_pct,
-                },
+            uptime_str = _format_uptime(time.time() - Config.UPTIME if Config.UPTIME else 0)
+
+            payload = {
+                "total_users": stats.get("total_users", 0),
+                "total_chats": stats.get("total_users", 0),
+                "total_files": stats.get("total_files", 0),
+                "ram_used":    ram_used_fmt,
+                "cpu_pct":     cpu_pct,
+                "uptime":      uptime_str,
+                "bw_pct":      bw_pct,
+                "bw_used":     format_size(bw_used),
+                "bw_today":    format_size(bw_today),
+                "bw_limit":    format_size(max_bw),
+            }
+            return web.Response(
+                text=json.dumps(payload),
+                content_type="application/json",
             )
         except Exception as exc:
-            logger.error("stats error: %s", exc)
+            logger.error("api_stats error: %s", exc)
             return web.json_response({"error": str(exc)}, status=500)
 
-    async def bandwidth_endpoint(request: web.Request):
+    # ─────────────────────────────────────────────────────────
+    # JSON API: /api/bandwidth
+    # ─────────────────────────────────────────────────────────
+    async def api_bandwidth(request: web.Request):
         try:
             stats     = await database.get_bandwidth_stats()
             max_bw    = Config.get("max_bandwidth", 107374182400)
             bw_mode   = Config.get("bandwidth_mode", True)
             used      = stats["total_bandwidth"]
             today     = stats["today_bandwidth"]
-            remaining = max_bw - used
+            remaining = max(0, max_bw - used)
             pct       = round((used / max_bw * 100) if max_bw else 0, 1)
-
-            # Return JSON when explicitly requested
-            if "application/json" in request.headers.get("Accept", ""):
-                return web.Response(
-                    text=json.dumps({
-                        **stats,
-                        "limit":      max_bw,
-                        "remaining":  remaining,
-                        "percentage": pct,
-                        "formatted":  {
-                            "total_bandwidth": format_size(used),
-                            "today_bandwidth": format_size(today),
-                            "limit":           format_size(max_bw),
-                            "remaining":       format_size(remaining),
-                        },
-                    }),
-                    content_type="application/json",
-                )
-
-            return aiohttp_jinja2.render_template(
-                "bandwidth_info.html",
-                request,
-                {
-                    "bot_name":     Config.BOT_NAME     or Config.DEFAULT_BOT_NAME,
-                    "bot_username": Config.BOT_USERNAME or Config.DEFAULT_BOT_USERNAME,
-                    "bw_mode":      bw_mode,
-                    "bw_limit":     format_size(max_bw),
-                    "bw_used":      format_size(used),
-                    "bw_today":     format_size(today),
-                    "bw_remaining": format_size(remaining),
-                    "bw_pct":       pct,
+            payload = {
+                **stats,
+                "limit":          max_bw,
+                "remaining":      remaining,
+                "percentage":     pct,
+                "bandwidth_mode": bw_mode,
+                "formatted": {
+                    "total_bandwidth": format_size(used),
+                    "today_bandwidth": format_size(today),
+                    "limit":           format_size(max_bw),
+                    "remaining":       format_size(remaining),
                 },
-            )
+            }
+            return web.Response(text=json.dumps(payload), content_type="application/json")
         except Exception as exc:
-            logger.error("bandwidth error: %s", exc)
+            logger.error("api_bandwidth error: %s", exc)
             return web.json_response({"error": str(exc)}, status=500)
 
-    async def health(request: web.Request):
-        bot_status  = "running" if Config.BOT_USERNAME else "initializing"
-        bot_username = Config.BOT_USERNAME or Config.DEFAULT_BOT_USERNAME
-
-        # Return JSON when explicitly requested
-        if "application/json" in request.headers.get("Accept", ""):
-            return web.json_response({
+    # ─────────────────────────────────────────────────────────
+    # JSON API: /api/health
+    # ─────────────────────────────────────────────────────────
+    async def api_health(request: web.Request):
+        try:
+            bot_me    = getattr(bot, "me", None)
+            bot_id    = str(bot_me.id)    if bot_me else "N/A"
+            bot_dc    = str(bot_me.dc_id)  if bot_me else "N/A"
+            payload = {
                 "status":       "ok",
-                "bot":          bot_status,
-                "bot_username": bot_username,
-            })
+                "bot_status":   "running" if Config.BOT_USERNAME else "initializing",
+                "bot_name":     Config.BOT_NAME     or Config.DEFAULT_BOT_NAME,
+                "bot_username": Config.BOT_USERNAME or Config.DEFAULT_BOT_USERNAME,
+                "bot_id":       bot_id,
+                "bot_dc":       bot_dc,
+                "active_conns": _active_connections,
+            }
+            return web.Response(text=json.dumps(payload), content_type="application/json")
+        except Exception as exc:
+            logger.error("api_health error: %s", exc)
+            return web.json_response({"error": str(exc)}, status=500)
 
-        return aiohttp_jinja2.render_template(
-            "health.html",
-            request,
-            {
-                "bot_name":     Config.BOT_NAME or Config.DEFAULT_BOT_NAME,
-                "bot_username": bot_username,
-                "bot_status":   bot_status,
-            },
-        )
+    # ─────────────────────────────────────────────────────────
+    # Legacy HTML routes — kept as redirects / backward compat
+    # ─────────────────────────────────────────────────────────
+    async def stats_endpoint(request: web.Request):
+        """Legacy /stats — redirect to unified panel."""
+        if "application/json" in request.headers.get("Accept", ""):
+            return await api_stats(request)
+        raise web.HTTPFound("/bot_settings")
 
+    async def bandwidth_endpoint(request: web.Request):
+        """Legacy /bandwidth — redirect to unified panel."""
+        if "application/json" in request.headers.get("Accept", ""):
+            return await api_bandwidth(request)
+        raise web.HTTPFound("/bot_settings")
+
+    async def health_endpoint(request: web.Request):
+        """Legacy /health — redirect to unified panel."""
+        if "application/json" in request.headers.get("Accept", ""):
+            return await api_health(request)
+        raise web.HTTPFound("/bot_settings")
+
+    # ─────────────────────────────────────────────────────────
+    # Route table
+    # ─────────────────────────────────────────────────────────
     app.router.add_get("/",                   home)
     app.router.add_get("/stream/{file_hash}", stream_page)
     app.router.add_get("/dl/{file_hash}",     download_file)
+
+    # Unified panel
+    app.router.add_get("/bot_settings",       bot_settings_page)
+
+    # JSON API
+    app.router.add_get("/api/stats",          api_stats)
+    app.router.add_get("/api/bandwidth",      api_bandwidth)
+    app.router.add_get("/api/health",         api_health)
+
+    # Legacy (redirect → panel for browsers, JSON for API clients)
     app.router.add_get("/stats",              stats_endpoint)
     app.router.add_get("/bandwidth",          bandwidth_endpoint)
-    app.router.add_get("/health",             health)
+    app.router.add_get("/health",             health_endpoint)
 
     return app
