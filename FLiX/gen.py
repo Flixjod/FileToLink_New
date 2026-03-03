@@ -772,7 +772,7 @@ async def inline_query_handler(client: Client, inline_query):
         await inline_query.answer(
             results=[],
             cache_time=1,
-            switch_pm_text="ꜱᴇɴᴅ ᴀ ꜰɪʟᴇ ᴛᴏ ɢᴇɴᴇʀᴀᴛᴇ ᴀ ʟɪɴᴋ",
+            switch_pm_text="📂 ꜱᴇɴᴅ ᴀ ꜰɪʟᴇ ᴛᴏ ɢᴇɴᴇʀᴀᴛᴇ ᴀ ʟɪɴᴋ",
             switch_pm_parameter="start",
         )
         return
@@ -785,7 +785,7 @@ async def inline_query_handler(client: Client, inline_query):
         await inline_query.answer(
             results=[],
             cache_time=5,
-            switch_pm_text="❌ ꜰɪʟᴇ ɴᴏᴛ ꜰᴏᴜɴᴅ",
+            switch_pm_text="❌ ꜰɪʟᴇ ɴᴏᴛ ꜰᴏᴜɴᴅ — ᴛʀʏ ᴀɢᴀɪɴ",
             switch_pm_parameter="start",
         )
         return
@@ -799,46 +799,71 @@ async def inline_query_handler(client: Client, inline_query):
     is_streamable = file_type in STREAMABLE_TYPES
     safe_name     = escape_markdown(file_data["file_name"])
     fmt_size      = format_size(file_data["file_size"])
-    mime_type     = file_data.get("mime_type", "") or ""
     tg_file_id    = file_data.get("telegram_file_id", "")
 
+    # ── Type-specific icons & labels ──────────────────────────
+    TYPE_META = {
+        "video":    {"icon": "🎬", "label": "ᴠɪᴅᴇᴏ",    "action": "ꜱᴛʀᴇᴀᴍ / ᴅᴏᴡɴʟᴏᴀᴅ"},
+        "audio":    {"icon": "🎵", "label": "ᴀᴜᴅɪᴏ",    "action": "ꜱᴛʀᴇᴀᴍ / ᴅᴏᴡɴʟᴏᴀᴅ"},
+        "image":    {"icon": "🖼️", "label": "ɪᴍᴀɢᴇ",    "action": "ᴠɪᴇᴡ / ᴅᴏᴡɴʟᴏᴀᴅ"},
+        "document": {"icon": "📄", "label": "ᴅᴏᴄᴜᴍᴇɴᴛ", "action": "ᴅᴏᴡɴʟᴏᴀᴅ"},
+    }
+    meta = TYPE_META.get(file_type, {"icon": "📁", "label": "ꜰɪʟᴇ", "action": "ᴅᴏᴡɴʟᴏᴀᴅ"})
+    type_icon  = meta["icon"]
+    type_label = meta["label"]
+
+    # ── Message content ───────────────────────────────────────
+    # Clean, well-structured share message
+    divider = "─" * 20
     text = (
-        f"📂 **{small_caps('file')}:** `{safe_name}`\n"
-        f"💾 **{small_caps('size')}:** `{fmt_size}`\n"
-        f"📊 **{small_caps('type')}:** `{file_type}`\n\n"
+        f"{type_icon} **{safe_name}**\n"
+        f"{divider}\n"
+        f"📦 `{fmt_size}`  ·  🏷️ {type_label}\n"
     )
     if is_streamable:
-        text += f"🎬 **{small_caps('stream')}:** {stream_link}\n"
-    text += f"📥 **{small_caps('download')}:** {download_link}"
+        text += (
+            f"\n🔗 **{small_caps('stream')}**\n`{stream_link}`\n"
+            f"\n⬇️ **{small_caps('download')}**\n`{download_link}`"
+        )
+    else:
+        text += (
+            f"\n⬇️ **{small_caps('download')}**\n`{download_link}`"
+        )
+    text += f"\n\n🤖 _ᴠɪᴀ @{Config.BOT_USERNAME}_"
 
+    # ── Inline keyboard ───────────────────────────────────────
     btn_rows = []
     if is_streamable:
         btn_rows.append([
-            InlineKeyboardButton(f"🎬 {small_caps('stream')}",   url=stream_link),
-            InlineKeyboardButton(f"📥 {small_caps('download')}", url=download_link),
+            InlineKeyboardButton(f"▶️ {small_caps('stream')}",   url=stream_link),
+            InlineKeyboardButton(f"⬇️ {small_caps('download')}", url=download_link),
         ])
     else:
         btn_rows.append([
-            InlineKeyboardButton(f"📥 {small_caps('download')}", url=download_link),
+            InlineKeyboardButton(f"⬇️ {small_caps('download')}", url=download_link),
         ])
     btn_rows.append([
-        InlineKeyboardButton(f"📩 {small_caps('get file via bot')}", url=telegram_link),
+        InlineKeyboardButton(f"🤖 {small_caps('get via bot')}", url=telegram_link),
     ])
     markup = InlineKeyboardMarkup(btn_rows)
 
-    THUMB_VIDEO    = "https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Clapper%20board/3D/clapper_board_3d.png"
-    THUMB_AUDIO    = "https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Musical%20note/3D/musical_note_3d.png"
-    THUMB_IMAGE    = "https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Framed%20picture/3D/framed_picture_3d.png"
-    THUMB_DOCUMENT = "https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Page%20facing%20up/3D/page_facing_up_3d.png"
-    DEFAULT_THUMB  = "https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/File%20folder/3D/file_folder_3d.png"
-
-    TYPE_THUMBS = {
-        "video":    THUMB_VIDEO,
-        "audio":    THUMB_AUDIO,
-        "image":    THUMB_IMAGE,
-        "document": THUMB_DOCUMENT,
+    # ── Thumbnail URLs (high-quality 3D Fluent icons) ─────────
+    THUMBS = {
+        "video":    "https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Clapper%20board/3D/clapper_board_3d.png",
+        "audio":    "https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Headphone/3D/headphone_3d.png",
+        "image":    "https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Framed%20picture/3D/framed_picture_3d.png",
+        "document": "https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Page%20facing%20up/3D/page_facing_up_3d.png",
     }
-    thumb_url = TYPE_THUMBS.get(file_type, DEFAULT_THUMB)
+    DEFAULT_THUMB = "https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Open%20file%20folder/3D/open_file_folder_3d.png"
+    thumb_url = THUMBS.get(file_type, DEFAULT_THUMB)
+
+    # ── Build result item ─────────────────────────────────────
+    # Result title: icon + filename  (truncated if too long)
+    display_name = file_data["file_name"]
+    if len(display_name) > 50:
+        display_name = display_name[:47] + "…"
+    result_title = f"{type_icon}  {display_name}"
+    result_desc  = f"💾 {fmt_size}   ·   {type_label.upper()}   ·   {small_caps('tap to share')}"
 
     result_item = None
 
@@ -847,8 +872,8 @@ async def inline_query_handler(client: Client, inline_query):
             result_item = InlineQueryResultPhoto(
                 photo_url=stream_link,
                 thumb_url=stream_link,
-                title=f"{file_data['file_name']}",
-                description=small_caps(f"image • {fmt_size}"),
+                title=result_title,
+                description=result_desc,
                 caption=text,
                 disable_web_page_preview=True,
                 reply_markup=markup,
@@ -858,8 +883,8 @@ async def inline_query_handler(client: Client, inline_query):
 
     if result_item is None:
         result_item = InlineQueryResultArticle(
-            title=f"{file_data['file_name']}",
-            description=small_caps(f"{file_type} • {fmt_size}"),
+            title=result_title,
+            description=result_desc,
             input_message_content=InputTextMessageContent(
                 message_text=text,
                 disable_web_page_preview=True,
