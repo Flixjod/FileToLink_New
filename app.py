@@ -13,15 +13,15 @@ from bot import Bot
 from config import Config
 from database import Database
 from helper import StreamingService, check_bandwidth_limit, format_size
+from helper.stream import get_active_session_count
 
 logger = logging.getLogger(__name__)
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 
-# Tracks live streaming / download sessions in real-time.
-# Incremented when a stream or download begins sending bytes;
-# decremented the moment the response is fully written (or errors).
-_active_connections = 0
+# Session counting is handled inside helper/stream.py via get_active_session_count()
+# which deduplicates by (file_hash, client_ip) to avoid inflated counts from
+# segment requests, reconnections, and background player probes.
 
 
 def _bot_info(bot: Bot) -> dict:
@@ -91,13 +91,8 @@ def build_app(bot: Bot, database) -> web.Application:
         }
 
     async def _tracked_stream(request: web.Request, file_hash: str, is_download: bool):
-        """Wrap stream_file so _active_connections accurately counts live sessions."""
-        global _active_connections
-        _active_connections += 1
-        try:
-            return await streaming_service.stream_file(request, file_hash, is_download=is_download)
-        finally:
-            _active_connections = max(0, _active_connections - 1)
+        """Delegate to stream_file; session counting is handled inside StreamingService."""
+        return await streaming_service.stream_file(request, file_hash, is_download=is_download)
 
     async def stream_page(request: web.Request):
         file_hash = request.match_info["file_hash"]
@@ -185,7 +180,7 @@ def build_app(bot: Bot, database) -> web.Application:
             "bw_remaining": format_size(remaining),
             "bw_pct":       bw_pct,
             "bot_status":   "running" if getattr(bot, "me", None) else "initializing",
-            "active_conns": _active_connections,
+            "active_conns": get_active_session_count(),
         }
 
     def _format_uptime(seconds: float) -> str:
@@ -281,7 +276,7 @@ def build_app(bot: Bot, database) -> web.Application:
                 "bot_username":            info["bot_username"],
                 "bot_id":                  info["bot_id"],
                 "bot_dc":                  info["bot_dc"],
-                "active_conns":            _active_connections,
+                "active_conns":            get_active_session_count(),
                 "active_conns_description": "Live streaming/download sessions currently transferring bytes",
             }
             return web.Response(text=json.dumps(payload), content_type="application/json")

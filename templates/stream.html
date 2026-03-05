@@ -90,6 +90,12 @@
       --b-sp-hover:          rgba(167,139,250,.12);
       --hk-section-bg:       rgba(255,255,255,0.06);
       --hk-section-border:   rgba(255,255,255,.12);
+      --settings-bg:         rgba(15,12,41,.97);
+      --settings-border:     rgba(255,255,255,.14);
+      --settings-item-hover: rgba(255,255,255,.07);
+      --pip-active-bg:       rgba(102,126,234,.18);
+      --pip-active-border:   rgba(102,126,234,.45);
+      --pip-active-color:    #a5b4fc;
     }
 
     [data-theme="light"] {
@@ -166,6 +172,12 @@
       --b-sp-hover:          rgba(167,139,250,.12);
       --hk-section-bg:       rgba(255,255,255,0.92);
       --hk-section-border:   rgba(102,126,234,.18);
+      --settings-bg:         rgba(255,255,255,.98);
+      --settings-border:     rgba(102,126,234,.22);
+      --settings-item-hover: rgba(102,126,234,.06);
+      --pip-active-bg:       rgba(102,126,234,.12);
+      --pip-active-border:   rgba(102,126,234,.35);
+      --pip-active-color:    #4338ca;
     }
 
     /* ── Reset ──────────────────────────────────────────────── */
@@ -183,7 +195,7 @@
       align-items: center;
       justify-content: flex-start;
       padding: 34px 16px 64px;
-      transition: background .45s ease, color .45s ease;
+      /* Use will-change only for the gradient, not color — avoids repaint lag */
     }
 
     /* ── Theme Toggle ────────────────────────────────────────── */
@@ -199,17 +211,33 @@
       font-size: 1.15rem;
       cursor: pointer;
       display: flex; align-items: center; justify-content: center;
-      transition: all .35s cubic-bezier(.34,1.56,.64,1);
+      /* GPU-accelerated transform only — no background or color in transition */
+      transition: transform 200ms cubic-bezier(.34,1.4,.64,1),
+                  box-shadow 200ms ease,
+                  border-color 150ms ease;
       backdrop-filter: blur(14px);
       -webkit-backdrop-filter: blur(14px);
       box-shadow: 0 2px 12px rgba(0,0,0,.15);
+      will-change: transform;
+      -webkit-tap-highlight-color: transparent;
     }
     .theme-toggle:hover {
-      transform: scale(1.15) rotate(15deg);
-      background: linear-gradient(135deg, #667eea, #764ba2);
-      color: #fff;
-      border-color: transparent;
-      box-shadow: 0 6px 22px rgba(102,126,234,.5);
+      transform: scale(1.12) rotate(12deg);
+      box-shadow: 0 6px 22px rgba(102,126,234,.45);
+    }
+    /* Icon fade — GPU layer for the inner icon only */
+    .theme-toggle .t-icon {
+      display: block;
+      transition: opacity 120ms ease, transform 200ms cubic-bezier(.34,1.4,.64,1);
+      will-change: transform, opacity;
+    }
+    /* Spin animation on click — applied via JS class */
+    .theme-toggle.toggling .t-icon {
+      animation: tgl-spin 280ms cubic-bezier(.34,1.4,.64,1) both;
+    }
+    @keyframes tgl-spin {
+      from { transform: rotate(-180deg) scale(.7); opacity: 0; }
+      to   { transform: rotate(0deg)    scale(1);  opacity: 1; }
     }
 
     /* ── Background Particles ───────────────────────────────── */
@@ -223,6 +251,7 @@
       border-radius: 50%;
       animation: floatUp 25s linear infinite;
       bottom: -200px;
+      will-change: transform, opacity;
     }
     .bg-animation span:nth-child(odd)  { background: var(--particle-color); }
     .bg-animation span:nth-child(even) { background: var(--particle-color2); }
@@ -341,13 +370,42 @@
       box-shadow: var(--player-card-shadow);
       margin-bottom: 20px;
       transition: box-shadow .35s ease;
+      position: relative;
     }
     .player-card:hover { box-shadow: var(--player-card-hover); }
-    .plyr { border-radius: 0; }
+
+    /* Plyr fullscreen fix — make video fill the screen completely */
+    .plyr { border-radius: 0; width: 100%; }
     .plyr--video .plyr__controls { background: linear-gradient(transparent, rgba(0,0,0,.88)); }
     .plyr__control--overlaid { background: linear-gradient(135deg, #667eea, #764ba2) !important; }
     .plyr__control--overlaid:hover { background: linear-gradient(135deg, #764ba2, #f093fb) !important; }
     .plyr--full-ui input[type=range] { color: #667eea; }
+
+    /* Fullscreen: true 100% coverage with no letterboxing */
+    :fullscreen                   .plyr--video,
+    :-webkit-full-screen          .plyr--video,
+    :-moz-full-screen             .plyr--video,
+    :fullscreen                   .plyr,
+    :-webkit-full-screen          .plyr,
+    :-moz-full-screen             .plyr {
+      width: 100vw !important;
+      height: 100vh !important;
+      max-width: 100vw !important;
+      max-height: 100vh !important;
+      border-radius: 0 !important;
+    }
+    :fullscreen                   .plyr--video .plyr__video-wrapper,
+    :-webkit-full-screen          .plyr--video .plyr__video-wrapper,
+    :-moz-full-screen             .plyr--video .plyr__video-wrapper {
+      height: 100vh !important;
+    }
+    :fullscreen                   video,
+    :-webkit-full-screen          video,
+    :-moz-full-screen             video {
+      width: 100vw  !important;
+      height: 100vh !important;
+      object-fit: contain;          /* keep aspect ratio — no crop */
+    }
 
     /* non-video file card */
     .doc-card {
@@ -363,58 +421,185 @@
     }
     .doc-card p { font-size: .92rem; color: var(--text-secondary); line-height: 1.75; }
 
-    /* ── Speed Strip ─────────────────────────────────────────── */
-    .speed-strip {
-      display: flex; align-items: center; gap: 8px;
-      padding: 14px 20px;
+    /* ── Controls Strip ──────────────────────────────────────── */
+    .controls-strip {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 11px 16px;
       border-top: 1px solid var(--divider);
       background: rgba(0,0,0,.06);
       flex-wrap: wrap;
+      min-height: 50px;
     }
-    .slbl {
-      font-size: .7rem;
-      color: var(--text-muted);
-      font-family: 'Poppins', sans-serif;
-      margin-right: 4px;
-      font-weight: 700;
-      letter-spacing: .06em;
-      text-transform: uppercase;
-    }
-    .sbtn {
-      background: var(--btn-ghost-bg);
-      border: 1px solid var(--btn-ghost-border);
-      color: var(--btn-ghost-color);
-      border-radius: 7px;
-      padding: 5px 13px;
-      font-size: .74rem;
-      font-family: 'Poppins', sans-serif;
-      cursor: pointer;
-      transition: all .2s ease;
-    }
-    .sbtn:hover, .sbtn.active {
-      background: var(--speed-active-bg);
-      color: var(--speed-active-color);
-      border-color: var(--speed-active-border);
-      transform: translateY(-1px);
-    }
+
+    /* ── PiP Button ──────────────────────────────────────────── */
     .pip-btn {
-      margin-left: auto;
       display: flex; align-items: center; gap: 6px;
       background: var(--btn-ghost-bg);
       border: 1px solid var(--btn-ghost-border);
       color: var(--btn-ghost-color);
-      border-radius: 7px;
-      padding: 5px 14px;
+      border-radius: 8px;
+      padding: 6px 14px;
       font-size: .74rem;
       font-family: 'Poppins', sans-serif;
       cursor: pointer;
       transition: all .2s ease;
+      white-space: nowrap;
     }
     .pip-btn:hover {
       background: rgba(102,126,234,.13);
       color: #667eea;
       border-color: rgba(102,126,234,.38);
       transform: translateY(-1px);
+    }
+    /* Active PiP state */
+    .pip-btn.pip-active {
+      background: var(--pip-active-bg) !important;
+      border-color: var(--pip-active-border) !important;
+      color: var(--pip-active-color) !important;
+      animation: pip-pulse 2s ease-in-out infinite;
+    }
+    @keyframes pip-pulse {
+      0%,100% { box-shadow: 0 0 0 0 rgba(102,126,234,.3); }
+      50%      { box-shadow: 0 0 0 6px rgba(102,126,234,.0); }
+    }
+    /* PiP overlay banner shown when video is in PiP mode */
+    .pip-banner {
+      display: none;
+      position: absolute; inset: 0; z-index: 10;
+      align-items: center; justify-content: center;
+      flex-direction: column; gap: 12px;
+      background: rgba(15,12,41,.82);
+      backdrop-filter: blur(6px);
+      border-radius: 24px;
+      pointer-events: none;
+    }
+    .pip-banner.visible { display: flex; }
+    .pip-banner-icon { font-size: 2.6rem; color: var(--pip-active-color); opacity: .9; }
+    .pip-banner-text { font-size: .92rem; font-weight: 700; color: var(--text-primary); }
+    .pip-banner-sub  { font-size: .78rem; color: var(--text-secondary); margin-top: -6px; }
+
+    /* ── Settings Button & Menu ──────────────────────────────── */
+    .settings-btn {
+      margin-left: auto;
+      display: flex; align-items: center; gap: 6px;
+      background: var(--btn-ghost-bg);
+      border: 1px solid var(--btn-ghost-border);
+      color: var(--btn-ghost-color);
+      border-radius: 8px;
+      padding: 6px 14px;
+      font-size: .74rem;
+      font-family: 'Poppins', sans-serif;
+      cursor: pointer;
+      transition: all .2s ease;
+      white-space: nowrap;
+      position: relative;
+    }
+    .settings-btn:hover {
+      background: rgba(102,126,234,.13);
+      color: #667eea;
+      border-color: rgba(102,126,234,.38);
+      transform: translateY(-1px);
+    }
+    .settings-btn.active {
+      background: rgba(102,126,234,.16);
+      color: #667eea;
+      border-color: rgba(102,126,234,.42);
+    }
+
+    /* Settings dropdown panel */
+    .settings-menu {
+      position: absolute;
+      bottom: calc(100% + 10px);
+      right: 0;
+      min-width: 280px;
+      background: var(--settings-bg);
+      border: 1px solid var(--settings-border);
+      border-radius: 18px;
+      padding: 10px;
+      box-shadow: 0 20px 60px rgba(0,0,0,.4), 0 0 0 1px rgba(255,255,255,.04);
+      z-index: 500;
+      display: none;
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      animation: settingsIn .22s cubic-bezier(.34,1.4,.64,1) both;
+    }
+    @keyframes settingsIn {
+      from { opacity: 0; transform: translateY(10px) scale(.97); }
+      to   { opacity: 1; transform: translateY(0)    scale(1);   }
+    }
+    .settings-menu.open { display: block; }
+
+    .smenu-section {
+      padding: 6px 4px 4px;
+    }
+    .smenu-label {
+      font-size: .62rem;
+      text-transform: uppercase; letter-spacing: .1em;
+      color: var(--text-muted);
+      font-weight: 700;
+      padding: 2px 10px 6px;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .smenu-label::after { content: ''; flex: 1; height: 1px; background: var(--divider); }
+
+    .smenu-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 9px 12px;
+      border-radius: 11px;
+      gap: 10px;
+      transition: background .15s ease;
+    }
+    .smenu-row:hover { background: var(--settings-item-hover); }
+    .smenu-row-label {
+      font-size: .82rem; font-weight: 600;
+      color: var(--text-secondary);
+      display: flex; align-items: center; gap: 8px;
+    }
+    .smenu-row-label i { font-size: .9rem; width: 16px; text-align: center; opacity: .8; }
+    .smenu-row-controls { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; justify-content: flex-end; }
+
+    /* Speed pills inside settings */
+    .sp-pill {
+      background: var(--btn-ghost-bg);
+      border: 1px solid var(--btn-ghost-border);
+      color: var(--btn-ghost-color);
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: .7rem;
+      font-family: 'Poppins', sans-serif;
+      cursor: pointer;
+      transition: all .15s ease;
+    }
+    .sp-pill:hover, .sp-pill.active {
+      background: var(--speed-active-bg);
+      color: var(--speed-active-color);
+      border-color: var(--speed-active-border);
+    }
+
+    /* Select inside settings */
+    .smenu-select {
+      background: var(--btn-ghost-bg);
+      border: 1px solid var(--btn-ghost-border);
+      color: var(--text-primary);
+      border-radius: 8px;
+      padding: 5px 10px;
+      font-size: .78rem;
+      font-family: 'Poppins', sans-serif;
+      cursor: pointer;
+      outline: none;
+      min-width: 120px;
+      max-width: 160px;
+    }
+    .smenu-select option { background: #1a1736; color: #fff; }
+    [data-theme="light"] .smenu-select option { background: #fff; color: #1a1a2e; }
+
+    /* Settings divider */
+    .smenu-divider {
+      height: 1px;
+      background: var(--divider);
+      margin: 6px 10px;
     }
 
     /* ── Info Panel ──────────────────────────────────────────── */
@@ -593,18 +778,31 @@
     ::-webkit-scrollbar-thumb { background: rgba(102,126,234,.28); border-radius: 3px; }
 
     /* ── Responsive ─────────────────────────────────────────── */
-    @media (max-width: 600px) {
+    @media (max-width: 640px) {
+      body { padding: 24px 12px 56px; }
       .actions-grid { grid-template-columns: repeat(2, 1fr); }
       .info-panel { flex-direction: column; align-items: flex-start; gap: 12px; }
-      .clr { margin-left: 0; }
+      .clr { margin-left: 0; width: 100%; }
+      .clbtn { width: 100%; justify-content: center; }
       .idiv { display: none; }
+      .controls-strip { padding: 10px 12px; gap: 6px; }
+      .settings-menu {
+        right: -12px;
+        min-width: calc(100vw - 32px);
+        max-width: calc(100vw - 32px);
+      }
+    }
+    @media (max-width: 400px) {
+      .actions-grid { grid-template-columns: 1fr; }
+      .smenu-row { flex-direction: column; align-items: flex-start; gap: 8px; }
+      .smenu-row-controls { width: 100%; justify-content: flex-start; }
     }
   </style>
 </head>
 <body>
   <!-- Theme Toggle (left side) -->
-  <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme" aria-label="Toggle theme">
-    <i class="fa-solid fa-moon" id="theme-icon"></i>
+  <button class="theme-toggle" id="theme-btn" onclick="toggleTheme()" title="Toggle theme" aria-label="Toggle theme">
+    <i class="fa-solid fa-moon t-icon" id="theme-icon"></i>
   </button>
 
   <!-- Particles -->
@@ -637,27 +835,138 @@
     </div>
 
     <!-- ── Player Card ───────────────────────────────────────── -->
-    <div class="player-card">
+    <div class="player-card" id="player-card">
+
       {% if file_type == 'video' %}
+      <!-- PiP overlay banner (shown when video enters PiP mode) -->
+      <div class="pip-banner" id="pip-banner">
+        <div class="pip-banner-icon"><i class="fa-solid fa-window-restore"></i></div>
+        <div class="pip-banner-text">Playing in Picture-in-Picture</div>
+        <div class="pip-banner-sub">Tap the PiP window to return</div>
+      </div>
+
       <video id="player" playsinline controls preload="metadata">
         <source src="{{ stream_url }}" type="video/mp4">
       </video>
-      <div class="speed-strip">
-        <span class="slbl">Speed</span>
-        <button class="sbtn" onclick="setSpeed(.5,this)">0.5×</button>
-        <button class="sbtn active" onclick="setSpeed(1,this)">1×</button>
-        <button class="sbtn" onclick="setSpeed(1.25,this)">1.25×</button>
-        <button class="sbtn" onclick="setSpeed(1.5,this)">1.5×</button>
-        <button class="sbtn" onclick="setSpeed(2,this)">2×</button>
-        <button class="pip-btn" onclick="togglePiP()">
-          <i class="fa-solid fa-window-restore"></i> PiP
+
+      <!-- ── Controls Strip ──────────────────────────────────── -->
+      <div class="controls-strip">
+
+        <!-- PiP button -->
+        <button class="pip-btn" id="pip-btn" onclick="togglePiP()">
+          <i class="fa-solid fa-window-restore" id="pip-icon"></i>
+          <span id="pip-label">PiP</span>
         </button>
-      </div>
+
+        <!-- Settings button (right-aligned) -->
+        <button class="settings-btn" id="settings-btn" onclick="toggleSettings(event)">
+          <i class="fa-solid fa-sliders"></i>
+          <span>Settings</span>
+
+          <!-- Settings dropdown -->
+          <div class="settings-menu" id="settings-menu" onclick="event.stopPropagation()">
+
+            <!-- Playback Speed -->
+            <div class="smenu-section">
+              <div class="smenu-label"><i class="fa-solid fa-gauge-simple-high"></i> Playback Speed</div>
+              <div class="smenu-row">
+                <span class="smenu-row-label"><i class="fa-solid fa-forward"></i> Speed</span>
+                <div class="smenu-row-controls" id="speed-pills">
+                  <button class="sp-pill" onclick="setSpeed(.5,this)">0.5×</button>
+                  <button class="sp-pill" onclick="setSpeed(.75,this)">0.75×</button>
+                  <button class="sp-pill active" onclick="setSpeed(1,this)">1×</button>
+                  <button class="sp-pill" onclick="setSpeed(1.25,this)">1.25×</button>
+                  <button class="sp-pill" onclick="setSpeed(1.5,this)">1.5×</button>
+                  <button class="sp-pill" onclick="setSpeed(2,this)">2×</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="smenu-divider"></div>
+
+            <!-- Audio Track -->
+            <div class="smenu-section">
+              <div class="smenu-label"><i class="fa-solid fa-volume-high"></i> Audio Track</div>
+              <div class="smenu-row">
+                <span class="smenu-row-label"><i class="fa-solid fa-music"></i> Track</span>
+                <div class="smenu-row-controls">
+                  <select class="smenu-select" id="audio-track-select" onchange="switchAudioTrack(this)">
+                    <option value="0">Default</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div class="smenu-divider"></div>
+
+            <!-- Subtitles -->
+            <div class="smenu-section">
+              <div class="smenu-label"><i class="fa-solid fa-closed-captioning"></i> Subtitles</div>
+              <div class="smenu-row">
+                <span class="smenu-row-label"><i class="fa-solid fa-language"></i> Track</span>
+                <div class="smenu-row-controls">
+                  <select class="smenu-select" id="subtitle-select" onchange="switchSubtitle(this)">
+                    <option value="-1">Off</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div class="smenu-divider"></div>
+
+            <!-- Loop toggle -->
+            <div class="smenu-section">
+              <div class="smenu-label"><i class="fa-solid fa-sliders"></i> Playback Options</div>
+              <div class="smenu-row">
+                <span class="smenu-row-label"><i class="fa-solid fa-rotate"></i> Loop</span>
+                <div class="smenu-row-controls">
+                  <button class="sp-pill" id="loop-btn" onclick="toggleLoop(this)">Off</button>
+                </div>
+              </div>
+            </div>
+
+          </div><!-- /settings-menu -->
+        </button><!-- /settings-btn -->
+      </div><!-- /controls-strip -->
+
       {% elif file_type == 'audio' %}
       <audio id="player" controls preload="metadata"
              style="width:100%;padding:28px 20px;display:block;background:transparent;">
         <source src="{{ stream_url }}" type="audio/mpeg">
       </audio>
+      <!-- Audio settings strip -->
+      <div class="controls-strip">
+        <button class="settings-btn" id="settings-btn" onclick="toggleSettings(event)" style="margin-left:0">
+          <i class="fa-solid fa-sliders"></i>
+          <span>Settings</span>
+          <div class="settings-menu" id="settings-menu" onclick="event.stopPropagation()">
+            <div class="smenu-section">
+              <div class="smenu-label"><i class="fa-solid fa-gauge-simple-high"></i> Playback Speed</div>
+              <div class="smenu-row">
+                <span class="smenu-row-label"><i class="fa-solid fa-forward"></i> Speed</span>
+                <div class="smenu-row-controls" id="speed-pills">
+                  <button class="sp-pill" onclick="setSpeed(.5,this)">0.5×</button>
+                  <button class="sp-pill active" onclick="setSpeed(1,this)">1×</button>
+                  <button class="sp-pill" onclick="setSpeed(1.25,this)">1.25×</button>
+                  <button class="sp-pill" onclick="setSpeed(1.5,this)">1.5×</button>
+                  <button class="sp-pill" onclick="setSpeed(2,this)">2×</button>
+                </div>
+              </div>
+            </div>
+            <div class="smenu-divider"></div>
+            <div class="smenu-section">
+              <div class="smenu-label"><i class="fa-solid fa-sliders"></i> Options</div>
+              <div class="smenu-row">
+                <span class="smenu-row-label"><i class="fa-solid fa-rotate"></i> Loop</span>
+                <div class="smenu-row-controls">
+                  <button class="sp-pill" id="loop-btn" onclick="toggleLoop(this)">Off</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </button>
+      </div>
+
       {% else %}
       <div class="doc-card">
         <i class="fa-solid fa-file-arrow-down"></i>
@@ -665,7 +974,7 @@
            Use the Download button below to save the file.</p>
       </div>
       {% endif %}
-    </div>
+    </div><!-- /player-card -->
 
     <!-- ── Info Panel ─────────────────────────────────────────── -->
     <div class="info-panel">
@@ -739,6 +1048,8 @@
         <div class="hk"><span class="kbd">←</span><span class="kbd">→</span> Seek 5s</div>
         <div class="hk"><span class="kbd">↑</span><span class="kbd">↓</span> Volume</div>
         <div class="hk"><span class="kbd">P</span> Picture-in-Picture</div>
+        <div class="hk"><span class="kbd">S</span> Settings</div>
+        <div class="hk"><span class="kbd">L</span> Toggle Loop</div>
       </div>
     </div>
     {% endif %}
@@ -762,29 +1073,34 @@
 
   <script src="https://cdn.plyr.io/3.6.9/plyr.polyfilled.js"></script>
   <script>
-  /* ── Theme toggle ─────────────────────────────────────────── */
+  /* ── Theme toggle (optimised) ─────────────────────────────── */
   (function() {
     const saved = localStorage.getItem('flix-theme') || 'dark';
     document.documentElement.setAttribute('data-theme', saved);
-    updateIcon(saved);
+    _applyThemeIcon(saved);
   })();
 
-  function updateIcon(theme) {
+  function _applyThemeIcon(theme) {
     const icon = document.getElementById('theme-icon');
     if (!icon) return;
-    icon.className = theme === 'dark' ? 'fa-solid fa-moon' : 'fa-solid fa-sun';
+    icon.className = (theme === 'dark' ? 'fa-solid fa-moon' : 'fa-solid fa-sun') + ' t-icon';
   }
 
   function toggleTheme() {
-    const html = document.documentElement;
+    const html    = document.documentElement;
     const current = html.getAttribute('data-theme') || 'dark';
-    const next = current === 'dark' ? 'light' : 'dark';
+    const next    = current === 'dark' ? 'light' : 'dark';
     html.setAttribute('data-theme', next);
     localStorage.setItem('flix-theme', next);
-    updateIcon(next);
-    const btn = document.querySelector('.theme-toggle');
-    btn.style.transform = 'scale(1.2) rotate(360deg)';
-    setTimeout(() => { btn.style.transform = ''; }, 400);
+    _applyThemeIcon(next);
+
+    /* GPU-layer only animation — no layout/paint triggers */
+    const btn = document.getElementById('theme-btn');
+    btn.classList.remove('toggling');
+    // Force reflow to restart animation
+    void btn.offsetWidth;
+    btn.classList.add('toggling');
+    btn.addEventListener('animationend', () => btn.classList.remove('toggling'), { once: true });
   }
 
   /* ── Template variables ───────────────────────────────────── */
@@ -798,9 +1114,11 @@
   const mediaEl = document.getElementById('player');
   if (mediaEl && (FILE_TYPE === 'video' || FILE_TYPE === 'audio')) {
     plyrInstance = new Plyr('#player', {
-      speed: { selected: 1, options: [0.5, 0.75, 1, 1.25, 1.5, 2] },
+      speed:    { selected: 1, options: [0.5, 0.75, 1, 1.25, 1.5, 2] },
       keyboard: { focused: true, global: true },
       tooltips: { controls: true, seek: true },
+      // Ensure fullscreen fills the viewport
+      fullscreen: { enabled: true, fallback: true, iosNative: true },
     });
   }
 
@@ -808,13 +1126,21 @@
   const sv = document.getElementById('status-val');
   if (mediaEl) {
     mediaEl.addEventListener('loadedmetadata', () => {
-      const s = Math.floor(mediaEl.duration);
-      const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sc = s % 60;
+      const s  = Math.floor(mediaEl.duration);
+      const h  = Math.floor(s / 3600);
+      const m  = Math.floor((s % 3600) / 60);
+      const sc = s % 60;
       const durEl = document.getElementById('dur-val');
       if (durEl) durEl.textContent = (h ? h + 'h ' : '') + (m ? m + 'm ' : '') + sc + 's';
       const resEl = document.getElementById('res-val');
       if (resEl && mediaEl.videoWidth) resEl.textContent = mediaEl.videoWidth + '×' + mediaEl.videoHeight;
+
+      // Populate audio tracks
+      _populateAudioTracks();
+      // Populate subtitle tracks
+      _populateSubtitles();
     });
+
     mediaEl.addEventListener('playing', () => {
       if (sv) { sv.textContent = '● Playing'; sv.style.color = 'var(--status-playing)'; }
     });
@@ -829,24 +1155,135 @@
     });
   }
 
+  /* ── Audio track population ───────────────────────────────── */
+  function _populateAudioTracks() {
+    const sel = document.getElementById('audio-track-select');
+    if (!sel || !mediaEl) return;
+    // HTMLMediaElement.audioTracks is available in some browsers
+    const tracks = mediaEl.audioTracks;
+    if (!tracks || tracks.length <= 1) return;
+    sel.innerHTML = '';
+    for (let i = 0; i < tracks.length; i++) {
+      const opt = document.createElement('option');
+      opt.value = i;
+      opt.textContent = tracks[i].label || ('Track ' + (i + 1));
+      sel.appendChild(opt);
+    }
+  }
+
+  function switchAudioTrack(sel) {
+    const tracks = mediaEl && mediaEl.audioTracks;
+    if (!tracks) return;
+    const idx = parseInt(sel.value, 10);
+    for (let i = 0; i < tracks.length; i++) {
+      tracks[i].enabled = (i === idx);
+    }
+    showToast('Audio: ' + (sel.options[sel.selectedIndex].text));
+  }
+
+  /* ── Subtitle track population ────────────────────────────── */
+  function _populateSubtitles() {
+    const sel = document.getElementById('subtitle-select');
+    if (!sel || !mediaEl) return;
+    const tracks = mediaEl.textTracks;
+    if (!tracks || tracks.length === 0) return;
+    sel.innerHTML = '<option value="-1">Off</option>';
+    for (let i = 0; i < tracks.length; i++) {
+      const t   = tracks[i];
+      const opt = document.createElement('option');
+      opt.value       = i;
+      opt.textContent = t.label || t.language || ('Sub ' + (i + 1));
+      sel.appendChild(opt);
+    }
+  }
+
+  function switchSubtitle(sel) {
+    const idx    = parseInt(sel.value, 10);
+    const tracks = mediaEl && mediaEl.textTracks;
+    if (!tracks) return;
+    for (let i = 0; i < tracks.length; i++) {
+      tracks[i].mode = (i === idx) ? 'showing' : 'hidden';
+    }
+    showToast(idx === -1 ? 'Subtitles off' : 'Sub: ' + sel.options[sel.selectedIndex].text);
+  }
+
   /* ── Speed buttons ────────────────────────────────────────── */
   function setSpeed(s, btn) {
     if (mediaEl) mediaEl.playbackRate = s;
-    document.querySelectorAll('.sbtn').forEach(b => b.classList.remove('active'));
+    // Update all pill groups (in case there are multiple for audio/video)
+    document.querySelectorAll('.sp-pill').forEach(b => {
+      // Only deactivate pills in the same container
+      if (btn && b.closest('#speed-pills') === btn.closest('#speed-pills')) {
+        b.classList.remove('active');
+      }
+    });
     if (btn) btn.classList.add('active');
   }
 
+  /* ── Loop toggle ──────────────────────────────────────────── */
+  function toggleLoop(btn) {
+    if (!mediaEl) return;
+    mediaEl.loop = !mediaEl.loop;
+    btn.textContent = mediaEl.loop ? 'On' : 'Off';
+    btn.classList.toggle('active', mediaEl.loop);
+    showToast('Loop ' + (mediaEl.loop ? 'enabled' : 'disabled'));
+  }
+
+  /* ── Settings menu toggle ─────────────────────────────────── */
+  const settingsBtn  = document.getElementById('settings-btn');
+  const settingsMenu = document.getElementById('settings-menu');
+
+  function toggleSettings(e) {
+    e.stopPropagation();
+    const isOpen = settingsMenu && settingsMenu.classList.toggle('open');
+    if (settingsBtn) settingsBtn.classList.toggle('active', isOpen);
+  }
+
+  // Close settings when clicking outside
+  document.addEventListener('click', () => {
+    if (settingsMenu) settingsMenu.classList.remove('open');
+    if (settingsBtn)  settingsBtn.classList.remove('active');
+  });
+
   /* ── Picture-in-Picture ───────────────────────────────────── */
+  const pipBtn    = document.getElementById('pip-btn');
+  const pipIcon   = document.getElementById('pip-icon');
+  const pipLabel  = document.getElementById('pip-label');
+  const pipBanner = document.getElementById('pip-banner');
+
+  function _setPipActive(active) {
+    if (!pipBtn) return;
+    pipBtn.classList.toggle('pip-active', active);
+    if (pipIcon)  pipIcon.className  = active ? 'fa-solid fa-window-restore' : 'fa-solid fa-window-restore';
+    if (pipLabel) pipLabel.textContent = active ? '● PiP Active' : 'PiP';
+    if (pipBanner) pipBanner.classList.toggle('visible', active);
+  }
+
   async function togglePiP() {
-    if (!document.pictureInPictureEnabled) return showToast('PiP not supported', 'fa-circle-xmark');
-    try {
-      document.pictureInPictureElement
-        ? await document.exitPictureInPicture()
-        : await mediaEl.requestPictureInPicture();
-      showToast('PiP enabled');
-    } catch (e) {
-      showToast('PiP failed', 'fa-circle-xmark');
+    if (!document.pictureInPictureEnabled || !mediaEl) {
+      return showToast('PiP not supported on this browser', 'fa-circle-xmark');
     }
+    try {
+      if (document.pictureInPictureElement) {
+        await document.exitPictureInPicture();
+      } else {
+        await mediaEl.requestPictureInPicture();
+      }
+    } catch (e) {
+      showToast('Could not activate PiP', 'fa-circle-xmark');
+    }
+  }
+
+  // Listen for PiP events on the video element
+  if (mediaEl) {
+    mediaEl.addEventListener('enterpictureinpicture', () => {
+      _setPipActive(true);
+      showToast('Picture-in-Picture enabled', 'fa-window-restore');
+    });
+    mediaEl.addEventListener('leavepictureinpicture', () => {
+      _setPipActive(false);
+      showToast('Returned from Picture-in-Picture');
+    });
   }
 
   /* ── External player launchers ────────────────────────────── */
@@ -860,8 +1297,8 @@
   /* ── Download ─────────────────────────────────────────────── */
   function lazyDownload() {
     showToast('Download started…', 'fa-cloud-arrow-down');
-    const a = document.createElement('a');
-    a.href = DOWNLOAD_URL;
+    const a    = document.createElement('a');
+    a.href     = DOWNLOAD_URL;
     a.download = FILE_NAME;
     document.body.appendChild(a);
     a.click();
@@ -885,9 +1322,21 @@
 
   /* ── Keyboard shortcuts ───────────────────────────────────── */
   document.addEventListener('keydown', e => {
-    if (['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
-    if (e.key.toLowerCase() === 'p') togglePiP();
-    if (e.key.toLowerCase() === 'c') copyVideoUrl();
+    if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) return;
+    const k = e.key.toLowerCase();
+    if (k === 'p') togglePiP();
+    if (k === 'c') copyVideoUrl();
+    if (k === 's') {
+      e.preventDefault();
+      if (settingsMenu) {
+        const isOpen = settingsMenu.classList.toggle('open');
+        if (settingsBtn) settingsBtn.classList.toggle('active', isOpen);
+      }
+    }
+    if (k === 'l') {
+      const lb = document.getElementById('loop-btn');
+      if (lb) toggleLoop(lb);
+    }
   });
 
   /* ── Disable right-click ──────────────────────────────────── */

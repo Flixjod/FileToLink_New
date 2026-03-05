@@ -131,17 +131,31 @@
       font-size: 1.15rem;
       cursor: pointer;
       display: flex; align-items: center; justify-content: center;
-      transition: all .35s cubic-bezier(.34,1.56,.64,1);
+      /* GPU-accelerated transform only for smooth 60fps animation */
+      transition: transform 200ms cubic-bezier(.34,1.4,.64,1),
+                  box-shadow 200ms ease,
+                  border-color 150ms ease;
       backdrop-filter: blur(14px);
       -webkit-backdrop-filter: blur(14px);
       box-shadow: 0 2px 12px rgba(0,0,0,.15);
+      will-change: transform;
+      -webkit-tap-highlight-color: transparent;
     }
     .theme-toggle:hover {
-      transform: scale(1.15) rotate(15deg);
-      background: linear-gradient(135deg, #667eea, #764ba2);
-      color: #fff;
-      border-color: transparent;
-      box-shadow: 0 6px 22px rgba(102,126,234,.5);
+      transform: scale(1.12) rotate(12deg);
+      box-shadow: 0 6px 22px rgba(102,126,234,.45);
+    }
+    .theme-toggle .t-icon {
+      display: block;
+      transition: opacity 120ms ease, transform 200ms cubic-bezier(.34,1.4,.64,1);
+      will-change: transform, opacity;
+    }
+    .theme-toggle.toggling .t-icon {
+      animation: tgl-spin 280ms cubic-bezier(.34,1.4,.64,1) both;
+    }
+    @keyframes tgl-spin {
+      from { transform: rotate(-180deg) scale(.7); opacity: 0; }
+      to   { transform: rotate(0deg)    scale(1);  opacity: 1; }
     }
 
     /* ── Background Particles ───────────────────────────────── */
@@ -545,8 +559,8 @@
 </head>
 <body>
   <!-- Theme Toggle (left side) -->
-  <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme" aria-label="Toggle theme">
-    <i class="fa-solid fa-moon" id="theme-icon"></i>
+  <button class="theme-toggle" id="theme-btn" onclick="toggleTheme()" title="Toggle theme" aria-label="Toggle theme">
+    <i class="fa-solid fa-moon t-icon" id="theme-icon"></i>
   </button>
 
   <!-- Particles -->
@@ -866,19 +880,24 @@
   function updateIcon(theme) {
     const icon = document.getElementById('theme-icon');
     if (!icon) return;
-    icon.className = theme === 'dark' ? 'fa-solid fa-moon' : 'fa-solid fa-sun';
+    icon.className = (theme === 'dark' ? 'fa-solid fa-moon' : 'fa-solid fa-sun') + ' t-icon';
   }
 
   function toggleTheme() {
-    const html = document.documentElement;
+    const html    = document.documentElement;
     const current = html.getAttribute('data-theme') || 'dark';
-    const next = current === 'dark' ? 'light' : 'dark';
+    const next    = current === 'dark' ? 'light' : 'dark';
     html.setAttribute('data-theme', next);
     localStorage.setItem('flix-theme', next);
     updateIcon(next);
-    const btn = document.querySelector('.theme-toggle');
-    btn.style.transform = 'scale(1.2) rotate(360deg)';
-    setTimeout(() => { btn.style.transform = ''; }, 400);
+    /* GPU-layer only animation */
+    const btn = document.getElementById('theme-btn');
+    if (btn) {
+      btn.classList.remove('toggling');
+      void btn.offsetWidth;
+      btn.classList.add('toggling');
+      btn.addEventListener('animationend', () => btn.classList.remove('toggling'), { once: true });
+    }
   }
 
   // ── Tab switching ──────────────────────────────────────────
