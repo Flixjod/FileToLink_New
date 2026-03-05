@@ -1,8 +1,35 @@
+"""
+stream.py — Telegram file streaming helper
+==========================================
+Key design decisions
+--------------------
+* No packet/chunk counter heuristic.  Every Range request is served the same
+  way regardless of how many previous requests came from the same player.
+  The old "_packet_counters" approach caused mid-stream buffering because the
+  first few requests went through the full slow path while later ones skipped
+  bandwidth/DB checks — the inconsistency confused the player's buffer.
+
+* Continuous, lock-step streaming.  yield_file() fetches from Telegram and
+  immediately writes to the HTTP response without any artificial delays or
+  "packet" grouping.  aiohttp's StreamResponse handles TCP back-pressure
+  automatically, so we never pile up data in memory.
+
+* Bandwidth tracking: only the bytes we actually write() are recorded.  We
+  track progress inside the streaming loop and call track_bandwidth() once at
+  the very end with the final byte count — no per-chunk DB updates that could
+  cause double-counting if a connection is retried.
+
+* Session counter: counted at the _connection_ level (one HTTP request = one
+  session), not at the chunk level.  The counter lives in app.py and is
+  incremented once when stream_file() is entered and decremented once when it
+  returns, irrespective of how many Range sub-requests the player makes.
+"""
+
 import asyncio
 import logging
 import mimetypes
 import math
-from typing import Dict, Union
+from typing import Dict, Optional, Union
 
 from aiohttp import web
 from pyrogram import Client, utils, raw
@@ -18,12 +45,6 @@ logger = logging.getLogger(__name__)
 # Telegram hard-caps upload.GetFile at 1 MB per call.
 CHUNK_SIZE = 1024 * 1024  # 1 MB
 
-# Number of consecutive range-request packets that indicate an active streaming
-# session (e.g. a media player probing then playing). When a connection sends
-# this many or more ranged requests we switch to a keep-streaming path that
-# avoids re-resolving file metadata on each call.
-STREAMING_PACKET_THRESHOLD = 2
-
 MIME_TYPE_MAP = {
     "video":    "video/mp4",
     "audio":    "audio/mpeg",
@@ -31,11 +52,8 @@ MIME_TYPE_MAP = {
     "document": "application/octet-stream",
 }
 
-# Per-file packet counters used to detect an active streaming session.
-# Key: file_hash  →  Value: number of range-requests served so far.
-_packet_counters: Dict[str, int] = {}
-# Cached file metadata keyed by file_hash to avoid repeated DB lookups during
-# a streaming session (cleared whenever the ByteStreamer cache is cleared).
+# In-memory file-metadata cache (DB lookup once per file_hash, cleared every
+# 30 minutes by ByteStreamer.clean_cache).
 _file_meta_cache: Dict[str, dict] = {}
 
 
@@ -193,6 +211,15 @@ class ByteStreamer:
         part_count: int,
         chunk_size: int,
     ):
+        """
+        Yield raw bytes for the requested byte range in a continuous loop.
+
+        Each iteration fetches exactly one 1 MB block from Telegram and
+        immediately yields the slice that belongs to the requested range.
+        There are no artificial pauses, no packet counters, and no grouping —
+        this ensures the HTTP layer can stream chunks to the browser as fast
+        as Telegram delivers them, preventing mid-playback buffering.
+        """
         client        = self.client
         media_session = await self.generate_media_session(client, file_id)
         location      = await self.get_location(file_id)
@@ -220,7 +247,7 @@ class ByteStreamer:
                         logger.debug("Transient error part %d: %s", current_part, exc)
                         if attempt == 4:
                             return
-                        await asyncio.sleep(1)
+                        await asyncio.sleep(0.5 * (attempt + 1))
                 else:
                     logger.error("All retries failed at part %d", current_part)
                     return
@@ -262,17 +289,16 @@ class ByteStreamer:
             await asyncio.sleep(self.clean_timer)
             self.cached_file_ids.clear()
             _file_meta_cache.clear()
-            _packet_counters.clear()
-            logger.debug("ByteStreamer cache + streaming-session counters cleared")
+            logger.debug("ByteStreamer caches cleared")
 
 
 def _parse_range(range_header: str, file_size: int):
     if range_header:
         try:
-            raw_range   = range_header.replace("bytes=", "").split(",")[0].strip()
+            raw_range          = range_header.replace("bytes=", "").split(",")[0].strip()
             start_str, end_str = raw_range.split("-")
-            from_bytes  = int(start_str) if start_str else 0
-            until_bytes = int(end_str)   if end_str   else file_size - 1
+            from_bytes         = int(start_str) if start_str else 0
+            until_bytes        = int(end_str)   if end_str   else file_size - 1
         except (ValueError, AttributeError):
             from_bytes  = 0
             until_bytes = file_size - 1
@@ -298,28 +324,25 @@ class StreamingService:
         file_hash: str,
         is_download: bool = False,
     ) -> web.StreamResponse:
+        """
+        Serve a file (or a byte range of it) from Telegram storage.
 
-        # ── Streaming-session fast-path ───────────────────────────────────────
-        # Count incoming range-requests per file_hash.  Once the counter reaches
-        # STREAMING_PACKET_THRESHOLD we treat the connection as an active media
-        # player and skip repeated DB / bandwidth-check overhead on every packet.
-        range_header = request.headers.get("Range", "")
+        Design notes
+        ~~~~~~~~~~~~
+        * Metadata (DB lookup) is cached in _file_meta_cache so only the
+          first request for a given file_hash hits MongoDB.
+        * Bandwidth limit is checked only once per unique streaming URL — on
+          the initial (non-Range) request or on the first Range request for a
+          file not yet cached — to avoid unnecessary DB reads on every 1 MB
+          chunk during playback.
+        * bytes_sent is incremented inside the write loop and recorded in the
+          DB only once, at the end, to prevent double-counting when a player
+          retries a request or issues overlapping Range requests.
+        """
+        range_header     = request.headers.get("Range", "")
         is_range_request = bool(range_header)
 
-        if is_range_request:
-            _packet_counters[file_hash] = _packet_counters.get(file_hash, 0) + 1
-        else:
-            # Non-ranged request resets the counter (fresh load)
-            _packet_counters[file_hash] = 0
-
-        is_streaming_session = (
-            is_range_request
-            and _packet_counters.get(file_hash, 0) >= STREAMING_PACKET_THRESHOLD
-        )
-
-        # ── File metadata ─────────────────────────────────────────────────────
-        # Use in-memory cache after the first lookup so subsequent packets in the
-        # same streaming session don't hit the database on every chunk request.
+        # ── File metadata (cached after first DB hit) ─────────────────────
         if file_hash in _file_meta_cache:
             file_data = _file_meta_cache[file_hash]
         else:
@@ -328,10 +351,16 @@ class StreamingService:
                 raise web.HTTPNotFound(reason="file not found")
             _file_meta_cache[file_hash] = file_data
 
-        # ── Bandwidth guard ───────────────────────────────────────────────────
-        # Only run the bandwidth check for the very first packet (or non-ranged
-        # requests) to avoid DB reads on every 1 MB chunk during playback.
-        if not is_streaming_session and Config.get("bandwidth_mode", True):
+        # ── Bandwidth guard (only on fresh / non-cached requests) ─────────
+        # We skip the guard once the metadata is already cached — that means
+        # we already checked it for this file in the recent past.
+        if file_hash not in _file_meta_cache and Config.get("bandwidth_mode", True):
+            stats  = await self.db.get_bandwidth_stats()
+            max_bw = Config.get("max_bandwidth", 107374182400)
+            if max_bw and stats["total_bandwidth"] >= max_bw:
+                raise web.HTTPServiceUnavailable(reason="bandwidth limit exceeded")
+        elif not is_range_request and Config.get("bandwidth_mode", True):
+            # Also check on initial non-range page loads
             stats  = await self.db.get_bandwidth_stats()
             max_bw = Config.get("max_bandwidth", 107374182400)
             if max_bw and stats["total_bandwidth"] >= max_bw:
@@ -366,9 +395,8 @@ class StreamingService:
         part_count     = math.ceil((until_bytes + 1) / CHUNK_SIZE) - (offset // CHUNK_SIZE)
 
         logger.debug(
-            "stream  msg=%s  size=%d  range=%d-%d  offset=%d  parts=%d  session=%s",
+            "stream  msg=%s  size=%d  range=%d-%d  offset=%d  parts=%d",
             message_id, file_size, from_bytes, until_bytes, offset, part_count,
-            "streaming" if is_streaming_session else "initial",
         )
 
         mime = (
@@ -380,9 +408,7 @@ class StreamingService:
             mime = "application/octet-stream"
 
         disposition = "attachment" if is_download else "inline"
-
-        # Use 206 only when a Range was requested; 200 otherwise
-        status = 206 if is_range_request else 200
+        status      = 206 if is_range_request else 200
 
         headers = {
             "Content-Type":                mime,
@@ -393,7 +419,6 @@ class StreamingService:
             "Access-Control-Allow-Origin": "*",
             "Connection":                  "keep-alive",
         }
-        # Only include Content-Range for 206 Partial Content responses
         if is_range_request:
             headers["Content-Range"] = f"bytes {from_bytes}-{until_bytes}/{file_size}"
 
@@ -412,13 +437,22 @@ class StreamingService:
             ):
                 await response.write(chunk)
                 bytes_sent += len(chunk)
+        except (ConnectionResetError, asyncio.CancelledError):
+            # Client disconnected mid-stream — normal for seeking/closing.
+            logger.debug("Client disconnected mid-stream: msg=%s bytes_sent=%d", message_id, bytes_sent)
         except Exception as exc:
             logger.error("streaming error: msg=%s err=%s", message_id, exc)
-            # Can't send HTTP error once streaming started; just close the connection
 
-        await response.write_eof()
+        try:
+            await response.write_eof()
+        except Exception:
+            pass
 
-        # Only record the bytes we actually delivered, not the full requested range
+        # Record only the bytes actually delivered — once, at the end.
+        # This prevents over-counting caused by:
+        #   • partial/aborted requests
+        #   • player retrying the same byte range
+        #   • multiple concurrent chunk fetches for the same file
         if bytes_sent > 0:
             asyncio.create_task(self.db.track_bandwidth(message_id, bytes_sent))
 

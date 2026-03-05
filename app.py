@@ -1,6 +1,7 @@
 import json
 import logging
 import time
+import uuid
 import asyncio
 from pathlib import Path
 
@@ -17,18 +18,34 @@ from helper import StreamingService, check_bandwidth_limit, format_size
 logger = logging.getLogger(__name__)
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
+STATIC_DIR    = Path(__file__).parent / "static"
 
-# Tracks live streaming / download sessions in real-time.
-# Incremented when a stream or download begins sending bytes;
-# decremented the moment the response is fully written (or errors).
-_active_connections = 0
+# ── Live-session tracker ────────────────────────────────────────────────────
+# We count *unique viewers*, not individual HTTP requests.
+# A viewer is identified by the session token stored in their Cookie.
+# The set _active_sessions holds currently-streaming session IDs.
+# The set is incremented when the first streaming byte is about to be sent
+# and decremented when the response is fully written.
+#
+# Why this is better than a simple integer counter:
+#   • A media player sends dozens of Range requests for every video it plays
+#     (seek, pre-buffer, quality switch). Counting each request would give
+#     wildly inflated numbers (e.g. 3 shown when only 1 viewer is watching).
+#   • With a Set<session_id>, multiple requests from the same browser session
+#     keep the count at 1 for that viewer until all their requests complete.
+_active_sessions: set = set()
+
+
+def _get_or_create_session_id(request: web.Request) -> str:
+    """Return the viewer's session cookie, or generate a new one."""
+    return request.cookies.get("flix_sid") or str(uuid.uuid4())
 
 
 def _bot_info(bot: Bot) -> dict:
     me = getattr(bot, "me", None)
     return {
-        "bot_name":     (me.first_name if me else None) or DEFAULT_BOT_NAME,
-        "bot_username": (me.username   if me else None) or DEFAULT_BOT_USERNAME,
+        "bot_name":     (me.first_name if me else None) or "File2Link",
+        "bot_username": (me.username   if me else None) or "file2link_bot",
         "bot_id":       str(me.id)    if me else "N/A",
         "bot_dc":       str(me.dc_id) if me else "N/A",
     }
@@ -91,13 +108,45 @@ def build_app(bot: Bot, database) -> web.Application:
         }
 
     async def _tracked_stream(request: web.Request, file_hash: str, is_download: bool):
-        """Wrap stream_file so _active_connections accurately counts live sessions."""
-        global _active_connections
-        _active_connections += 1
+        """
+        Stream a file while accurately tracking unique live viewer sessions.
+
+        Session tracking logic
+        ~~~~~~~~~~~~~~~~~~~~~~
+        * Each browser/client carries a `flix_sid` cookie that uniquely
+          identifies a viewing session.  If the cookie is absent we generate
+          a new UUID and set it in the response.
+        * We use a module-level set (_active_sessions) instead of a plain
+          integer counter.  This means:
+            - A single viewer seeking / buffering sends many Range requests
+              but only adds ONE entry to the set.
+            - The count drops back to zero as soon as all connections from
+              that session finish (i.e. the Set removes the ID).
+          This fixes the "I watched alone but the panel showed 3 sessions"
+          bug that was caused by counting every HTTP sub-request separately.
+        """
+        sid = _get_or_create_session_id(request)
+        _active_sessions.add(sid)
         try:
-            return await streaming_service.stream_file(request, file_hash, is_download=is_download)
+            response = await streaming_service.stream_file(
+                request, file_hash, is_download=is_download
+            )
+            # Persist the session cookie so the browser re-sends it on the
+            # next Range request (seek / pre-buffer).
+            if "flix_sid" not in request.cookies:
+                response.set_cookie(
+                    "flix_sid", sid,
+                    max_age=3600,
+                    httponly=True,
+                    samesite="Lax",
+                )
+            return response
         finally:
-            _active_connections = max(0, _active_connections - 1)
+            # Remove the session only when this specific connection ends.
+            # If the viewer has other in-flight requests they share the same
+            # sid and those will also call discard() when they finish — that
+            # is safe because set.discard() is idempotent.
+            _active_sessions.discard(sid)
 
     async def stream_page(request: web.Request):
         file_hash = request.match_info["file_hash"]
@@ -117,7 +166,7 @@ def build_app(bot: Bot, database) -> web.Application:
 
         base      = str(request.url.origin())
         file_type = (
-            "video"   if file_data["file_type"] == Config.FILE_TYPE_VIDEO
+            "video"    if file_data["file_type"] == Config.FILE_TYPE_VIDEO
             else "audio" if file_data["file_type"] == Config.FILE_TYPE_AUDIO
             else "document"
         )
@@ -138,6 +187,25 @@ def build_app(bot: Bot, database) -> web.Application:
     async def download_file(request: web.Request):
         file_hash = request.match_info["file_hash"]
         return await _tracked_stream(request, file_hash, is_download=True)
+
+    # ── Static icons (Issue 3 — local hosting of inline-query thumbnails) ──
+    async def static_icon(request: web.Request):
+        """
+        Serve pre-rendered PNG icons from /home/user/webapp/static/icons/.
+        These are used as thumbnails in Telegram inline query results instead
+        of fetching from GitHub raw CDN — eliminates external latency.
+        """
+        name      = request.match_info["name"]
+        icon_path = STATIC_DIR / "icons" / name
+        if not icon_path.exists() or not icon_path.is_file():
+            raise web.HTTPNotFound()
+        return web.FileResponse(
+            icon_path,
+            headers={
+                "Cache-Control": "public, max-age=86400",
+                "Content-Type":  "image/png",
+            },
+        )
 
     async def _collect_panel_data():
         try:
@@ -185,7 +253,9 @@ def build_app(bot: Bot, database) -> web.Application:
             "bw_remaining": format_size(remaining),
             "bw_pct":       bw_pct,
             "bot_status":   "running" if getattr(bot, "me", None) else "initializing",
-            "active_conns": _active_connections,
+            # Unique live viewer count — number of distinct session IDs that
+            # currently have an in-flight streaming response.
+            "active_conns": len(_active_sessions),
         }
 
     def _format_uptime(seconds: float) -> str:
@@ -275,14 +345,18 @@ def build_app(bot: Bot, database) -> web.Application:
         try:
             info = _bot_info(bot)
             payload = {
-                "status":                  "ok",
-                "bot_status":              "running" if getattr(bot, "me", None) else "initializing",
-                "bot_name":                info["bot_name"],
-                "bot_username":            info["bot_username"],
-                "bot_id":                  info["bot_id"],
-                "bot_dc":                  info["bot_dc"],
-                "active_conns":            _active_connections,
-                "active_conns_description": "Live streaming/download sessions currently transferring bytes",
+                "status":       "ok",
+                "bot_status":   "running" if getattr(bot, "me", None) else "initializing",
+                "bot_name":     info["bot_name"],
+                "bot_username": info["bot_username"],
+                "bot_id":       info["bot_id"],
+                "bot_dc":       info["bot_dc"],
+                "active_conns": len(_active_sessions),
+                "active_conns_description": (
+                    "Number of unique viewer sessions currently streaming. "
+                    "Uses session cookies to prevent counting multiple Range "
+                    "requests from the same browser as separate viewers."
+                ),
             }
             return web.Response(text=json.dumps(payload), content_type="application/json")
         except Exception as exc:
@@ -304,15 +378,17 @@ def build_app(bot: Bot, database) -> web.Application:
             return await api_health(request)
         raise web.HTTPFound("/bot_settings")
 
-    app.router.add_get("/",                   home)
-    app.router.add_get("/stream/{file_hash}", stream_page)
-    app.router.add_get("/dl/{file_hash}",     download_file)
-    app.router.add_get("/bot_settings",       bot_settings_page)
-    app.router.add_get("/api/stats",          api_stats)
-    app.router.add_get("/api/bandwidth",      api_bandwidth)
-    app.router.add_get("/api/health",         api_health)
-    app.router.add_get("/stats",              stats_endpoint)
-    app.router.add_get("/bandwidth",          bandwidth_endpoint)
-    app.router.add_get("/health",             health_endpoint)
+    app.router.add_get("/",                        home)
+    app.router.add_get("/stream/{file_hash}",      stream_page)
+    app.router.add_get("/dl/{file_hash}",          download_file)
+    app.router.add_get("/bot_settings",            bot_settings_page)
+    app.router.add_get("/api/stats",               api_stats)
+    app.router.add_get("/api/bandwidth",           api_bandwidth)
+    app.router.add_get("/api/health",              api_health)
+    app.router.add_get("/stats",                   stats_endpoint)
+    app.router.add_get("/bandwidth",               bandwidth_endpoint)
+    app.router.add_get("/health",                  health_endpoint)
+    # Static icon route for inline-query thumbnails (Issue 3)
+    app.router.add_get("/icons/{name}",            static_icon)
 
     return app

@@ -844,15 +844,20 @@ async def inline_query_handler(client: Client, inline_query):
     ])
     markup = InlineKeyboardMarkup(btn_rows)
 
-    # High-quality 3D thumbnail icons for each file type in Telegram inline results.
-    # Sourced from Microsoft's Fluent Emoji 3D set — 512px renders for crisp display.
+    # Thumbnail icons for Telegram inline query results.
+    # Served from our own /icons/ static route (local PNG files) for:
+    #   • Zero external CDN latency
+    #   • No GitHub raw rate-limits
+    #   • Instant load for inline results
+    # Falls back to the folder icon for unknown types.
+    _icon_base = (Config.URL or f"http://localhost:{Config.PORT}").rstrip("/")
     THUMBS = {
-        "video":    "https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Clapper%20board/3D/clapper_board_3d.png",
-        "audio":    "https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Headphone/3D/headphone_3d.png",
-        "image":    "https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Framed%20picture/3D/framed_picture_3d.png",
-        "document": "https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Page%20facing%20up/3D/page_facing_up_3d.png",
+        "video":    f"{_icon_base}/icons/media.png",
+        "audio":    f"{_icon_base}/icons/audio.png",
+        "image":    f"{_icon_base}/icons/photo.png",
+        "document": f"{_icon_base}/icons/document.png",
     }
-    DEFAULT_THUMB = "https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Open%20file%20folder/3D/open_file_folder_3d.png"
+    DEFAULT_THUMB = f"{_icon_base}/icons/folder.png"
     thumb_url = THUMBS.get(file_type, DEFAULT_THUMB)
 
     display_name = file_data["file_name"]

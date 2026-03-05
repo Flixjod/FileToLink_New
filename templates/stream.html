@@ -12,7 +12,6 @@
   <meta property="og:description" content="Watch {{ file_name }} — stream or download instantly.">
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-  <link href="https://cdn.plyr.io/3.6.9/plyr.css" rel="stylesheet">
   <style>
     /* ── CSS Custom Properties ──────────────────────────────── */
     :root,
@@ -90,6 +89,12 @@
       --b-sp-hover:          rgba(167,139,250,.12);
       --hk-section-bg:       rgba(255,255,255,0.06);
       --hk-section-border:   rgba(255,255,255,.12);
+      --ctrl-bg:             rgba(0,0,0,.72);
+      --ctrl-border:         rgba(255,255,255,.1);
+      --ctrl-hover:          rgba(255,255,255,.1);
+      --pip-banner-bg:       rgba(102,126,234,.18);
+      --pip-banner-border:   rgba(102,126,234,.42);
+      --pip-banner-color:    #a5b4fc;
     }
 
     [data-theme="light"] {
@@ -166,6 +171,12 @@
       --b-sp-hover:          rgba(167,139,250,.12);
       --hk-section-bg:       rgba(255,255,255,0.92);
       --hk-section-border:   rgba(102,126,234,.18);
+      --ctrl-bg:             rgba(240,242,255,.96);
+      --ctrl-border:         rgba(102,126,234,.18);
+      --ctrl-hover:          rgba(102,126,234,.1);
+      --pip-banner-bg:       rgba(102,126,234,.12);
+      --pip-banner-border:   rgba(102,126,234,.32);
+      --pip-banner-color:    #4338ca;
     }
 
     /* ── Reset ──────────────────────────────────────────────── */
@@ -341,29 +352,260 @@
       box-shadow: var(--player-card-shadow);
       margin-bottom: 20px;
       transition: box-shadow .35s ease;
+      position: relative;
     }
     .player-card:hover { box-shadow: var(--player-card-hover); }
-    .plyr { border-radius: 0; }
-    .plyr--video .plyr__controls { background: linear-gradient(transparent, rgba(0,0,0,.88)); }
-    .plyr__control--overlaid { background: linear-gradient(135deg, #667eea, #764ba2) !important; }
-    .plyr__control--overlaid:hover { background: linear-gradient(135deg, #764ba2, #f093fb) !important; }
-    .plyr--full-ui input[type=range] { color: #667eea; }
 
-    /* non-video file card */
-    .doc-card {
-      padding: 52px 24px;
-      text-align: center;
+    /* ── Video wrapper — needed for proper fullscreen ─────────── */
+    .video-wrap {
+      position: relative;
+      width: 100%;
+      background: #000;
+    }
+    .video-wrap video {
+      width: 100%;
+      display: block;
+      /* Allow the video element to fill the container correctly */
+      max-height: 72vh;
+      object-fit: contain;
+    }
+
+    /* ── Fullscreen state — ensure video fills screen ─────────── */
+    .video-wrap:-webkit-full-screen,
+    .video-wrap:-moz-full-screen,
+    .video-wrap:-ms-fullscreen,
+    .video-wrap:fullscreen {
+      width: 100vw;
+      height: 100vh;
+      background: #000;
+    }
+    .video-wrap:-webkit-full-screen video,
+    .video-wrap:-moz-full-screen video,
+    .video-wrap:-ms-fullscreen video,
+    .video-wrap:fullscreen video {
+      width: 100%;
+      height: 100%;
+      max-height: none;
+      object-fit: contain;
+    }
+    /* Ensure custom controls stay above video in fullscreen */
+    .video-wrap:-webkit-full-screen .custom-controls,
+    .video-wrap:-moz-full-screen .custom-controls,
+    .video-wrap:fullscreen .custom-controls {
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      z-index: 2147483647;
+      border-radius: 0;
+    }
+
+    /* ── PiP banner — shown while video is in Picture-in-Picture ─ */
+    .pip-banner {
+      display: none;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      padding: 18px 24px;
+      background: var(--pip-banner-bg);
+      border-top: 1px solid var(--pip-banner-border);
+      color: var(--pip-banner-color);
+      font-size: .88rem;
+      font-weight: 700;
+      font-family: 'Poppins', sans-serif;
+      animation: pipPulse 2.4s ease-in-out infinite;
+    }
+    .pip-banner.visible { display: flex; }
+    .pip-banner i { font-size: 1.1rem; }
+    .pip-banner .pip-close {
+      margin-left: auto;
+      background: transparent;
+      border: 1px solid var(--pip-banner-border);
+      border-radius: 6px;
+      padding: 4px 12px;
+      color: var(--pip-banner-color);
+      font-size: .76rem;
+      font-family: 'Poppins', sans-serif;
+      cursor: pointer;
+      transition: background .2s;
+    }
+    .pip-banner .pip-close:hover { background: var(--pip-banner-bg); }
+    @keyframes pipPulse {
+      0%,100% { opacity: 1; }
+      50%      { opacity: .72; }
+    }
+
+    /* ── Custom Control Strip ─────────────────────────────────── */
+    /* Replaces the external Plyr library with a fully custom,
+       accessible control bar that supports:
+         • Play/Pause          • Seek bar
+         • Volume + Mute       • Playback Speed (inline)
+         • Audio Track select  • Subtitles/Captions select
+         • Picture-in-Picture  • Fullscreen
+       The Settings ⚙ button has been removed — every option is
+       directly accessible from the strip. */
+    .custom-controls {
+      display: flex;
+      flex-direction: column;
+      background: var(--ctrl-bg);
+      border-top: 1px solid var(--ctrl-border);
+      padding: 0;
+      user-select: none;
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+    }
+
+    /* ── Seek / progress bar ──────────────────────────────────── */
+    .ctrl-seek-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 16px 6px;
+    }
+    .ctrl-time {
+      font-size: .68rem;
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--text-secondary);
+      white-space: nowrap;
+      min-width: 88px;
+    }
+    .seek-bar {
+      flex: 1;
+      -webkit-appearance: none;
+      appearance: none;
+      height: 4px;
+      border-radius: 2px;
+      background: rgba(255,255,255,.18);
+      cursor: pointer;
+      outline: none;
+      transition: height .15s;
+    }
+    .seek-bar:hover { height: 6px; }
+    .seek-bar::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 14px; height: 14px;
+      border-radius: 50%;
+      background: #667eea;
+      cursor: pointer;
+      box-shadow: 0 0 6px rgba(102,126,234,.7);
+    }
+    .seek-bar::-moz-range-thumb {
+      width: 14px; height: 14px;
+      border-radius: 50%;
+      background: #667eea;
+      border: none;
+      cursor: pointer;
+    }
+
+    /* ── Bottom buttons row ───────────────────────────────────── */
+    .ctrl-btn-row {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 12px 10px;
+      flex-wrap: wrap;
+    }
+    .cb {
+      background: transparent;
+      border: none;
+      color: var(--text-secondary);
+      border-radius: 8px;
+      padding: 6px 8px;
+      font-size: .8rem;
+      cursor: pointer;
+      display: flex; align-items: center; gap: 5px;
+      transition: background .15s, color .15s;
+      white-space: nowrap;
+      font-family: 'Poppins', sans-serif;
+    }
+    .cb:hover, .cb:focus-visible {
+      background: var(--ctrl-hover);
+      color: var(--text-primary);
+      outline: none;
+    }
+    .cb.active {
+      color: #667eea;
+    }
+    .cb i { font-size: .84rem; }
+
+    /* Spacer pushes right-side controls to the right */
+    .ctrl-spacer { flex: 1; }
+
+    /* ── Inline dropdowns (Speed / Audio / Subtitles) ─────────── */
+    .ctrl-select-wrap {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+    .ctrl-select-lbl {
+      font-size: .68rem;
+      font-weight: 700;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      margin-right: 4px;
+      pointer-events: none;
+      white-space: nowrap;
+    }
+    .ctrl-select {
+      -webkit-appearance: none;
+      appearance: none;
+      background: var(--ctrl-hover);
+      border: 1px solid var(--ctrl-border);
+      border-radius: 7px;
+      color: var(--text-primary);
+      font-size: .74rem;
+      font-family: 'Poppins', sans-serif;
+      padding: 5px 22px 5px 9px;
+      cursor: pointer;
+      outline: none;
+      max-width: 110px;
+    }
+    .ctrl-select:focus { border-color: #667eea; }
+    /* Custom dropdown arrow */
+    .ctrl-select-wrap::after {
+      content: '\f107';
+      font-family: 'Font Awesome 6 Free';
+      font-weight: 900;
+      position: absolute;
+      right: 7px;
+      pointer-events: none;
+      font-size: .62rem;
       color: var(--text-muted);
     }
-    .doc-card i {
-      font-size: 3.4rem; margin-bottom: 16px;
-      background: linear-gradient(135deg, #667eea, #764ba2);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-    }
-    .doc-card p { font-size: .92rem; color: var(--text-secondary); line-height: 1.75; }
 
-    /* ── Speed Strip ─────────────────────────────────────────── */
+    /* ── Volume slider ────────────────────────────────────────── */
+    .vol-bar {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 64px; height: 4px;
+      border-radius: 2px;
+      background: rgba(255,255,255,.18);
+      cursor: pointer;
+      outline: none;
+    }
+    .vol-bar::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 12px; height: 12px;
+      border-radius: 50%;
+      background: var(--text-secondary);
+      cursor: pointer;
+    }
+    .vol-bar::-moz-range-thumb {
+      width: 12px; height: 12px;
+      border-radius: 50%;
+      background: var(--text-secondary);
+      border: none;
+    }
+
+    /* ── Vertical divider between control groups ──────────────── */
+    .ctrl-vdiv {
+      width: 1px; height: 20px;
+      background: var(--ctrl-border);
+      margin: 0 4px;
+      flex-shrink: 0;
+    }
+
+    /* ── Speed strip for audio / non-video fallback ─────────────
+       (kept for audio player since it doesn't use the video controls) */
     .speed-strip {
       display: flex; align-items: center; gap: 8px;
       padding: 14px 20px;
@@ -397,25 +639,20 @@
       border-color: var(--speed-active-border);
       transform: translateY(-1px);
     }
-    .pip-btn {
-      margin-left: auto;
-      display: flex; align-items: center; gap: 6px;
-      background: var(--btn-ghost-bg);
-      border: 1px solid var(--btn-ghost-border);
-      color: var(--btn-ghost-color);
-      border-radius: 7px;
-      padding: 5px 14px;
-      font-size: .74rem;
-      font-family: 'Poppins', sans-serif;
-      cursor: pointer;
-      transition: all .2s ease;
+
+    /* non-video file card */
+    .doc-card {
+      padding: 52px 24px;
+      text-align: center;
+      color: var(--text-muted);
     }
-    .pip-btn:hover {
-      background: rgba(102,126,234,.13);
-      color: #667eea;
-      border-color: rgba(102,126,234,.38);
-      transform: translateY(-1px);
+    .doc-card i {
+      font-size: 3.4rem; margin-bottom: 16px;
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
     }
+    .doc-card p { font-size: .92rem; color: var(--text-secondary); line-height: 1.75; }
 
     /* ── Info Panel ──────────────────────────────────────────── */
     .info-panel {
@@ -598,6 +835,10 @@
       .info-panel { flex-direction: column; align-items: flex-start; gap: 12px; }
       .clr { margin-left: 0; }
       .idiv { display: none; }
+      .ctrl-btn-row { gap: 2px; padding: 4px 8px 8px; }
+      .ctrl-select { max-width: 80px; font-size: .68rem; }
+      .ctrl-select-lbl { display: none; }
+      .vol-bar { width: 44px; }
     }
   </style>
 </head>
@@ -637,27 +878,113 @@
     </div>
 
     <!-- ── Player Card ───────────────────────────────────────── -->
-    <div class="player-card">
+    <div class="player-card" id="playerCard">
       {% if file_type == 'video' %}
-      <video id="player" playsinline controls preload="metadata">
-        <source src="{{ stream_url }}" type="video/mp4">
-      </video>
-      <div class="speed-strip">
-        <span class="slbl">Speed</span>
-        <button class="sbtn" onclick="setSpeed(.5,this)">0.5×</button>
-        <button class="sbtn active" onclick="setSpeed(1,this)">1×</button>
-        <button class="sbtn" onclick="setSpeed(1.25,this)">1.25×</button>
-        <button class="sbtn" onclick="setSpeed(1.5,this)">1.5×</button>
-        <button class="sbtn" onclick="setSpeed(2,this)">2×</button>
-        <button class="pip-btn" onclick="togglePiP()">
-          <i class="fa-solid fa-window-restore"></i> PiP
-        </button>
+
+      <!-- Video element inside its own wrapper for fullscreen API -->
+      <div class="video-wrap" id="videoWrap">
+        <video id="player" playsinline preload="metadata">
+          <source src="{{ stream_url }}" type="video/mp4">
+        </video>
       </div>
+
+      <!-- PiP banner — visible only when in Picture-in-Picture mode -->
+      <div class="pip-banner" id="pipBanner">
+        <i class="fa-solid fa-window-restore"></i>
+        <span>Playing in Picture-in-Picture</span>
+        <button class="pip-close" onclick="exitPiP()">Return to page</button>
+      </div>
+
+      <!-- ── Custom Control Strip ──────────────────────────── -->
+      <div class="custom-controls" id="customControls">
+
+        <!-- Seek / progress row -->
+        <div class="ctrl-seek-row">
+          <span class="ctrl-time" id="timeDisplay">0:00 / 0:00</span>
+          <input type="range" class="seek-bar" id="seekBar"
+                 min="0" max="100" value="0" step="0.1"
+                 aria-label="Seek">
+        </div>
+
+        <!-- Buttons row -->
+        <div class="ctrl-btn-row">
+
+          <!-- Play / Pause -->
+          <button class="cb" id="playBtn" onclick="togglePlay()" title="Play / Pause (Space)">
+            <i class="fa-solid fa-play" id="playIcon"></i>
+          </button>
+
+          <!-- Volume mute toggle -->
+          <button class="cb" id="muteBtn" onclick="toggleMute()" title="Mute / Unmute (M)">
+            <i class="fa-solid fa-volume-high" id="volIcon"></i>
+          </button>
+
+          <!-- Volume slider -->
+          <input type="range" class="vol-bar" id="volBar"
+                 min="0" max="1" step="0.05" value="1"
+                 aria-label="Volume">
+
+          <div class="ctrl-vdiv"></div>
+
+          <!-- ── Playback Speed (inline select) ─────────────── -->
+          <div class="ctrl-select-wrap" title="Playback Speed">
+            <span class="ctrl-select-lbl">Speed</span>
+            <select class="ctrl-select" id="speedSelect" aria-label="Playback Speed">
+              <option value="0.25">0.25×</option>
+              <option value="0.5">0.5×</option>
+              <option value="0.75">0.75×</option>
+              <option value="1" selected>1×</option>
+              <option value="1.25">1.25×</option>
+              <option value="1.5">1.5×</option>
+              <option value="1.75">1.75×</option>
+              <option value="2">2×</option>
+            </select>
+          </div>
+
+          <div class="ctrl-vdiv"></div>
+
+          <!-- ── Audio Track (inline select) ───────────────── -->
+          <div class="ctrl-select-wrap" id="audioTrackWrap" title="Audio Track" style="display:none">
+            <span class="ctrl-select-lbl">Audio</span>
+            <select class="ctrl-select" id="audioTrackSelect" aria-label="Audio Track"></select>
+          </div>
+
+          <!-- ── Subtitles / Captions (inline select) ──────── -->
+          <div class="ctrl-select-wrap" id="subsWrap" title="Subtitles / Captions" style="display:none">
+            <span class="ctrl-select-lbl">Subs</span>
+            <select class="ctrl-select" id="subsSelect" aria-label="Subtitles / Captions"></select>
+          </div>
+
+          <!-- Spacer -->
+          <div class="ctrl-spacer"></div>
+
+          <!-- PiP button -->
+          <button class="cb" id="pipBtn" onclick="togglePiP()" title="Picture-in-Picture (P)" style="display:none">
+            <i class="fa-solid fa-window-restore"></i>
+          </button>
+
+          <!-- Fullscreen button -->
+          <button class="cb" id="fsBtn" onclick="toggleFullscreen()" title="Fullscreen (F)">
+            <i class="fa-solid fa-expand" id="fsIcon"></i>
+          </button>
+
+        </div><!-- /ctrl-btn-row -->
+      </div><!-- /custom-controls -->
+
       {% elif file_type == 'audio' %}
       <audio id="player" controls preload="metadata"
              style="width:100%;padding:28px 20px;display:block;background:transparent;">
         <source src="{{ stream_url }}" type="audio/mpeg">
       </audio>
+      <!-- Speed strip for audio -->
+      <div class="speed-strip">
+        <span class="slbl">Speed</span>
+        <button class="sbtn" onclick="setAudioSpeed(.5,this)">0.5×</button>
+        <button class="sbtn active" onclick="setAudioSpeed(1,this)">1×</button>
+        <button class="sbtn" onclick="setAudioSpeed(1.25,this)">1.25×</button>
+        <button class="sbtn" onclick="setAudioSpeed(1.5,this)">1.5×</button>
+        <button class="sbtn" onclick="setAudioSpeed(2,this)">2×</button>
+      </div>
       {% else %}
       <div class="doc-card">
         <i class="fa-solid fa-file-arrow-down"></i>
@@ -737,7 +1064,7 @@
         <div class="hk"><span class="kbd">F</span> Fullscreen</div>
         <div class="hk"><span class="kbd">M</span> Mute / Unmute</div>
         <div class="hk"><span class="kbd">←</span><span class="kbd">→</span> Seek 5s</div>
-        <div class="hk"><span class="kbd">↑</span><span class="kbd">↓</span> Volume</div>
+        <div class="hk"><span class="kbd">↑</span><span class="kbd">↓</span> Volume ±10%</div>
         <div class="hk"><span class="kbd">P</span> Picture-in-Picture</div>
       </div>
     </div>
@@ -760,7 +1087,6 @@
     </div>
   </div>
 
-  <script src="https://cdn.plyr.io/3.6.9/plyr.polyfilled.js"></script>
   <script>
   /* ── Theme toggle ─────────────────────────────────────────── */
   (function() {
@@ -768,13 +1094,11 @@
     document.documentElement.setAttribute('data-theme', saved);
     updateIcon(saved);
   })();
-
   function updateIcon(theme) {
     const icon = document.getElementById('theme-icon');
     if (!icon) return;
     icon.className = theme === 'dark' ? 'fa-solid fa-moon' : 'fa-solid fa-sun';
   }
-
   function toggleTheme() {
     const html = document.documentElement;
     const current = html.getAttribute('data-theme') || 'dark';
@@ -793,60 +1117,355 @@
   const FILE_NAME    = {{ file_name | tojson }};
   const FILE_TYPE    = {{ file_type | tojson }};
 
-  /* ── Plyr setup ───────────────────────────────────────────── */
-  let plyrInstance = null;
-  const mediaEl = document.getElementById('player');
-  if (mediaEl && (FILE_TYPE === 'video' || FILE_TYPE === 'audio')) {
-    plyrInstance = new Plyr('#player', {
-      speed: { selected: 1, options: [0.5, 0.75, 1, 1.25, 1.5, 2] },
-      keyboard: { focused: true, global: true },
-      tooltips: { controls: true, seek: true },
-    });
-  }
+  /* ═══════════════════════════════════════════════════════════
+     VIDEO PLAYER — Custom controls implementation
+     Fixes:
+       #2  Fullscreen works via the Fullscreen API on the wrapper
+           div, so the entire player (video + controls) enters
+           fullscreen together, with controls remaining visible.
+       #4  Settings button removed.  Speed / Audio / Subtitles
+           are inline selects directly in the control strip.
+       #5  PiP banner appears when the video enters PiP mode;
+           disappears when it leaves.
+  ═══════════════════════════════════════════════════════════ */
+  const video     = document.getElementById('player');
+  const videoWrap = document.getElementById('videoWrap');
 
-  /* ── Status / metadata events ─────────────────────────────── */
-  const sv = document.getElementById('status-val');
-  if (mediaEl) {
-    mediaEl.addEventListener('loadedmetadata', () => {
-      const s = Math.floor(mediaEl.duration);
-      const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sc = s % 60;
+  if (video && FILE_TYPE === 'video') {
+
+    const playBtn   = document.getElementById('playBtn');
+    const playIcon  = document.getElementById('playIcon');
+    const muteBtn   = document.getElementById('muteBtn');
+    const volIcon   = document.getElementById('volIcon');
+    const volBar    = document.getElementById('volBar');
+    const seekBar   = document.getElementById('seekBar');
+    const timeDisp  = document.getElementById('timeDisplay');
+    const speedSel  = document.getElementById('speedSelect');
+    const audioWrap = document.getElementById('audioTrackWrap');
+    const audioSel  = document.getElementById('audioTrackSelect');
+    const subsWrap  = document.getElementById('subsWrap');
+    const subsSel   = document.getElementById('subsSelect');
+    const fsBtn     = document.getElementById('fsBtn');
+    const fsIcon    = document.getElementById('fsIcon');
+    const pipBtn    = document.getElementById('pipBtn');
+    const pipBanner = document.getElementById('pipBanner');
+    const sv        = document.getElementById('status-val');
+
+    /* ── Helpers ──────────────────────────────────────────── */
+    function fmtTime(s) {
+      s = Math.floor(s || 0);
+      const h = Math.floor(s / 3600);
+      const m = Math.floor((s % 3600) / 60);
+      const sc = s % 60;
+      return h
+        ? `${h}:${String(m).padStart(2,'0')}:${String(sc).padStart(2,'0')}`
+        : `${m}:${String(sc).padStart(2,'0')}`;
+    }
+    function setStatus(text, color) {
+      if (sv) { sv.textContent = text; sv.style.color = color; }
+    }
+
+    /* ── Play / Pause ─────────────────────────────────────── */
+    function togglePlay() {
+      video.paused ? video.play() : video.pause();
+    }
+    video.addEventListener('play',  () => { playIcon.className = 'fa-solid fa-pause'; });
+    video.addEventListener('pause', () => { playIcon.className = 'fa-solid fa-play'; });
+    video.addEventListener('playing', () => setStatus('● Playing', 'var(--status-playing)'));
+    video.addEventListener('pause',   () => setStatus('Paused',    'var(--status-paused)'));
+    video.addEventListener('waiting', () => setStatus('Buffering…','var(--status-buffer)'));
+    video.addEventListener('error',   () => setStatus('Error',     'var(--status-error)'));
+
+    /* ── Volume ───────────────────────────────────────────── */
+    function updateVolIcon() {
+      if (video.muted || video.volume === 0) {
+        volIcon.className = 'fa-solid fa-volume-xmark';
+      } else if (video.volume < 0.5) {
+        volIcon.className = 'fa-solid fa-volume-low';
+      } else {
+        volIcon.className = 'fa-solid fa-volume-high';
+      }
+    }
+    function toggleMute() {
+      video.muted = !video.muted;
+      if (!video.muted) volBar.value = video.volume;
+      updateVolIcon();
+    }
+    volBar.addEventListener('input', () => {
+      video.volume = parseFloat(volBar.value);
+      video.muted  = video.volume === 0;
+      updateVolIcon();
+    });
+    video.addEventListener('volumechange', () => {
+      volBar.value = video.muted ? 0 : video.volume;
+      updateVolIcon();
+    });
+
+    /* ── Seek bar ─────────────────────────────────────────── */
+    let isSeeking = false;
+    function updateSeekBar() {
+      if (!isSeeking && video.duration) {
+        seekBar.value = (video.currentTime / video.duration) * 100;
+      }
+      if (video.duration) {
+        timeDisp.textContent = fmtTime(video.currentTime) + ' / ' + fmtTime(video.duration);
+      }
+    }
+    video.addEventListener('timeupdate',    updateSeekBar);
+    video.addEventListener('loadedmetadata', () => {
+      updateSeekBar();
       const durEl = document.getElementById('dur-val');
-      if (durEl) durEl.textContent = (h ? h + 'h ' : '') + (m ? m + 'm ' : '') + sc + 's';
       const resEl = document.getElementById('res-val');
-      if (resEl && mediaEl.videoWidth) resEl.textContent = mediaEl.videoWidth + '×' + mediaEl.videoHeight;
+      if (durEl) {
+        const s = Math.floor(video.duration);
+        const h = Math.floor(s/3600), m = Math.floor((s%3600)/60), sc = s%60;
+        durEl.textContent = (h?h+'h ':'') + (m?m+'m ':'') + sc+'s';
+      }
+      if (resEl && video.videoWidth) resEl.textContent = video.videoWidth+'×'+video.videoHeight;
+      buildTextTracks();
+      buildAudioTracks();
     });
-    mediaEl.addEventListener('playing', () => {
-      if (sv) { sv.textContent = '● Playing'; sv.style.color = 'var(--status-playing)'; }
+    seekBar.addEventListener('mousedown', () => { isSeeking = true; });
+    seekBar.addEventListener('touchstart', () => { isSeeking = true; });
+    seekBar.addEventListener('input', () => {
+      if (video.duration) video.currentTime = (parseFloat(seekBar.value)/100) * video.duration;
     });
-    mediaEl.addEventListener('pause', () => {
-      if (sv) { sv.textContent = 'Paused'; sv.style.color = 'var(--status-paused)'; }
-    });
-    mediaEl.addEventListener('waiting', () => {
-      if (sv) { sv.textContent = 'Buffering…'; sv.style.color = 'var(--status-buffer)'; }
-    });
-    mediaEl.addEventListener('error', () => {
-      if (sv) { sv.textContent = 'Error'; sv.style.color = 'var(--status-error)'; }
-    });
-  }
+    seekBar.addEventListener('mouseup',   () => { isSeeking = false; });
+    seekBar.addEventListener('touchend',  () => { isSeeking = false; });
 
-  /* ── Speed buttons ────────────────────────────────────────── */
-  function setSpeed(s, btn) {
-    if (mediaEl) mediaEl.playbackRate = s;
+    /* ── Playback Speed ───────────────────────────────────── */
+    speedSel.addEventListener('change', () => {
+      video.playbackRate = parseFloat(speedSel.value);
+    });
+
+    /* ── Audio Tracks ─────────────────────────────────────── */
+    function buildAudioTracks() {
+      // audioTracks is a non-standard but widely-supported API
+      const at = video.audioTracks;
+      if (!at || at.length <= 1) { audioWrap.style.display = 'none'; return; }
+      audioWrap.style.display = '';
+      audioSel.innerHTML = '';
+      for (let i = 0; i < at.length; i++) {
+        const opt = document.createElement('option');
+        opt.value = i;
+        opt.textContent = at[i].label || at[i].language || ('Track ' + (i+1));
+        if (at[i].enabled) opt.selected = true;
+        audioSel.appendChild(opt);
+      }
+    }
+    audioSel.addEventListener('change', () => {
+      const at = video.audioTracks;
+      if (!at) return;
+      const chosen = parseInt(audioSel.value);
+      for (let i = 0; i < at.length; i++) at[i].enabled = (i === chosen);
+    });
+
+    /* ── Subtitles / Captions ─────────────────────────────── */
+    function buildTextTracks() {
+      const tracks = video.textTracks;
+      const sub_options = [{ value: -1, label: 'Off' }];
+      if (!tracks || tracks.length === 0) { subsWrap.style.display = 'none'; return; }
+      for (let i = 0; i < tracks.length; i++) {
+        if (['subtitles','captions','descriptions'].includes(tracks[i].kind)) {
+          sub_options.push({ value: i, label: tracks[i].label || tracks[i].language || ('Sub ' + (i+1)) });
+        }
+      }
+      if (sub_options.length <= 1) { subsWrap.style.display = 'none'; return; }
+      subsWrap.style.display = '';
+      subsSel.innerHTML = '';
+      sub_options.forEach(o => {
+        const opt = document.createElement('option');
+        opt.value = o.value;
+        opt.textContent = o.label;
+        subsSel.appendChild(opt);
+      });
+    }
+    subsSel.addEventListener('change', () => {
+      const tracks = video.textTracks;
+      if (!tracks) return;
+      const chosen = parseInt(subsSel.value);
+      for (let i = 0; i < tracks.length; i++) {
+        tracks[i].mode = (i === chosen) ? 'showing' : 'hidden';
+      }
+    });
+
+    /* ════════════════════════════════════════════════════════
+       FULLSCREEN — Issue #2 Fix
+       ════════════════════════════════════════════════════════
+       Strategy:
+       1. Request fullscreen on `videoWrap` (the div containing
+          the <video> AND the custom-controls strip).
+          This ensures controls remain visible in fullscreen.
+       2. Fall back to requesting fullscreen on the <video>
+          itself (iOS Safari, older WebKit) and overlay the
+          controls via CSS position:fixed.
+       3. Keyboard shortcut F also triggers this.
+       4. Handle the fullscreenchange event to keep the icon
+          and any state in sync.
+    ════════════════════════════════════════════════════════ */
+    function requestFS(el) {
+      if      (el.requestFullscreen)       return el.requestFullscreen();
+      else if (el.webkitRequestFullscreen) return el.webkitRequestFullscreen();
+      else if (el.mozRequestFullScreen)    return el.mozRequestFullScreen();
+      else if (el.msRequestFullscreen)     return el.msRequestFullscreen();
+    }
+    function exitFS() {
+      if      (document.exitFullscreen)       return document.exitFullscreen();
+      else if (document.webkitExitFullscreen) return document.webkitExitFullscreen();
+      else if (document.mozCancelFullScreen)  return document.mozCancelFullScreen();
+      else if (document.msExitFullscreen)     return document.msExitFullscreen();
+    }
+    function isFullscreen() {
+      return !!(
+        document.fullscreenElement ||
+        document.webkitFullscreenElement ||
+        document.mozFullScreenElement ||
+        document.msFullscreenElement
+      );
+    }
+
+    function toggleFullscreen() {
+      if (isFullscreen()) {
+        exitFS();
+      } else {
+        // Prefer wrapping div so controls stay visible inside fullscreen
+        requestFS(videoWrap).catch(() => {
+          // Fallback: try the video element itself (e.g. Safari)
+          requestFS(video).catch(err => {
+            showToast('Fullscreen not available', 'fa-circle-xmark');
+            console.warn('Fullscreen error:', err);
+          });
+        });
+      }
+    }
+
+    // Sync icon and layout when fullscreen state changes
+    ['fullscreenchange','webkitfullscreenchange','mozfullscreenchange','MSFullscreenChange'].forEach(evt => {
+      document.addEventListener(evt, () => {
+        const fs = isFullscreen();
+        fsIcon.className = fs ? 'fa-solid fa-compress' : 'fa-solid fa-expand';
+        fsBtn.title = fs ? 'Exit Fullscreen (F)' : 'Fullscreen (F)';
+      });
+    });
+
+    /* ════════════════════════════════════════════════════════
+       PICTURE-IN-PICTURE — Issue #5 Fix
+       ════════════════════════════════════════════════════════
+       • Show PiP button only when API is supported.
+       • Display banner on the page while video is in PiP.
+       • Banner has a "Return to page" button to exit PiP.
+       • pipBtn icon changes to indicate active state.
+    ════════════════════════════════════════════════════════ */
+    if (document.pictureInPictureEnabled) {
+      pipBtn.style.display = '';
+    }
+
+    async function togglePiP() {
+      if (!document.pictureInPictureEnabled) {
+        showToast('PiP not supported in this browser', 'fa-circle-xmark');
+        return;
+      }
+      try {
+        if (document.pictureInPictureElement) {
+          await document.exitPictureInPicture();
+        } else {
+          await video.requestPictureInPicture();
+        }
+      } catch(e) {
+        showToast('PiP failed: ' + e.message, 'fa-circle-xmark');
+      }
+    }
+    async function exitPiP() {
+      try {
+        if (document.pictureInPictureElement) await document.exitPictureInPicture();
+      } catch(e) {}
+    }
+
+    video.addEventListener('enterpictureinpicture', () => {
+      pipBanner.classList.add('visible');
+      pipBtn.classList.add('active');
+      pipBtn.title = 'Exit Picture-in-Picture (P)';
+      pipBtn.querySelector('i').className = 'fa-solid fa-compress-alt';
+      showToast('Picture-in-Picture active', 'fa-window-restore');
+    });
+    video.addEventListener('leavepictureinpicture', () => {
+      pipBanner.classList.remove('visible');
+      pipBtn.classList.remove('active');
+      pipBtn.title = 'Picture-in-Picture (P)';
+      pipBtn.querySelector('i').className = 'fa-solid fa-window-restore';
+    });
+
+    /* ── Keyboard Shortcuts ───────────────────────────────── */
+    document.addEventListener('keydown', e => {
+      if (['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)) return;
+      switch (e.key) {
+        case ' ':
+        case 'k':
+          e.preventDefault();
+          togglePlay();
+          break;
+        case 'f':
+        case 'F':
+          toggleFullscreen();
+          break;
+        case 'm':
+        case 'M':
+          toggleMute();
+          break;
+        case 'p':
+        case 'P':
+          togglePiP();
+          break;
+        case 'ArrowLeft':
+          e.preventDefault();
+          video.currentTime = Math.max(0, video.currentTime - 5);
+          break;
+        case 'ArrowRight':
+          e.preventDefault();
+          video.currentTime = Math.min(video.duration || 0, video.currentTime + 5);
+          break;
+        case 'ArrowUp':
+          e.preventDefault();
+          video.volume = Math.min(1, video.volume + 0.1);
+          volBar.value = video.volume;
+          updateVolIcon();
+          break;
+        case 'ArrowDown':
+          e.preventDefault();
+          video.volume = Math.max(0, video.volume - 0.1);
+          volBar.value = video.volume;
+          updateVolIcon();
+          break;
+        case 'c':
+        case 'C':
+          copyVideoUrl();
+          break;
+      }
+    });
+
+  } // end if (video && FILE_TYPE === 'video')
+
+  /* ── Audio speed (for audio player) ──────────────────────── */
+  const audioEl = (FILE_TYPE === 'audio') ? document.getElementById('player') : null;
+  function setAudioSpeed(s, btn) {
+    if (audioEl) audioEl.playbackRate = s;
     document.querySelectorAll('.sbtn').forEach(b => b.classList.remove('active'));
     if (btn) btn.classList.add('active');
   }
 
-  /* ── Picture-in-Picture ───────────────────────────────────── */
-  async function togglePiP() {
-    if (!document.pictureInPictureEnabled) return showToast('PiP not supported', 'fa-circle-xmark');
-    try {
-      document.pictureInPictureElement
-        ? await document.exitPictureInPicture()
-        : await mediaEl.requestPictureInPicture();
-      showToast('PiP enabled');
-    } catch (e) {
-      showToast('PiP failed', 'fa-circle-xmark');
-    }
+  /* ── Status / metadata events for audio ──────────────────── */
+  if (audioEl) {
+    const sv = document.getElementById('status-val');
+    audioEl.addEventListener('loadedmetadata', () => {
+      const s = Math.floor(audioEl.duration);
+      const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sc = s % 60;
+      const durEl = document.getElementById('dur-val');
+      if (durEl) durEl.textContent = (h ? h + 'h ' : '') + (m ? m + 'm ' : '') + sc + 's';
+    });
+    audioEl.addEventListener('playing', () => { if(sv){sv.textContent='● Playing';sv.style.color='var(--status-playing)';} });
+    audioEl.addEventListener('pause',   () => { if(sv){sv.textContent='Paused';   sv.style.color='var(--status-paused)'; } });
+    audioEl.addEventListener('waiting', () => { if(sv){sv.textContent='Buffering…';sv.style.color='var(--status-buffer)';} });
+    audioEl.addEventListener('error',   () => { if(sv){sv.textContent='Error';    sv.style.color='var(--status-error)'; } });
   }
 
   /* ── External player launchers ────────────────────────────── */
@@ -882,13 +1501,6 @@
     clearTimeout(_tt);
     _tt = setTimeout(() => t.classList.remove('show'), 2500);
   }
-
-  /* ── Keyboard shortcuts ───────────────────────────────────── */
-  document.addEventListener('keydown', e => {
-    if (['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
-    if (e.key.toLowerCase() === 'p') togglePiP();
-    if (e.key.toLowerCase() === 'c') copyVideoUrl();
-  });
 
   /* ── Disable right-click ──────────────────────────────────── */
   document.addEventListener('contextmenu', e => e.preventDefault());
