@@ -98,14 +98,6 @@ def build_app(bot: Bot, database) -> web.Application:
         }
 
     async def _tracked_stream(request: web.Request, file_hash: str, is_download: bool):
-        """
-        Wrap stream_file with accurate unique-session tracking.
-        
-        A session key is (file_hash, client_ip).  Multiple range-requests from
-        the same IP playing the same file count as ONE session, eliminating the
-        inflated viewer count that occurred when a single player issued 3-5
-        probe/prefetch requests before starting playback.
-        """
         client_ip   = _get_client_ip(request)
         session_key = f"{file_hash}:{client_ip}"
         await _register_session(session_key)

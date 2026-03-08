@@ -16,12 +16,10 @@ from database import Database
 
 logger = logging.getLogger(__name__)
 
-# ── Chunk / prefetch tuning ───────────────────────────────────────────────────
 # Telegram hard-caps upload.GetFile at 1 MB per call.
-CHUNK_SIZE = 1024 * 1024          # 1 MB per request (Telegram hard cap)
+CHUNK_SIZE = 1024 * 1024          # 1 MB per request
 
 # Keep more chunks in flight for smoother high-speed playback.
-# Raising this from 3→6 reduces mid-stream stalls on fast connections.
 PREFETCH_COUNT = 6
 
 # Maximum retries per chunk before giving up.
@@ -79,36 +77,33 @@ _BROWSER_NATIVE_AUDIO = {
     "audio/x-aac",
 }
 
-# ── Session dedup for live-viewer counting ────────────────────────────────────
-# Maps (file_hash, client_ip) → last-seen timestamp so that multiple
-# range-requests from the same player are counted as ONE session.
+# Session tracking: maps session_key → last-seen timestamp.
 _active_sessions: Dict[str, float] = {}
 _sessions_lock = asyncio.Lock()
 
-# A session is considered "alive" while data is flowing. We clean up stale
-# entries after this many seconds of inactivity.
+# A session is considered "alive" for this many seconds after its last chunk.
+# Raising the TTL prevents the counter from flickering 0→1→0 between the rapid
+# sequential range-requests a video player issues (metadata probe → first chunk).
 _SESSION_TTL = 30  # seconds
 
-# ── Bandwidth dedup ───────────────────────────────────────────────────────────
-# Tracks (client_ip, message_id, from_bytes) tuples that have already been
-# counted toward bandwidth.  Duplicate range requests from the same client
-# (e.g. player probing, prefetch, reconnect) for the same byte range are
-# skipped so bandwidth is not inflated.
+# Grace period after a stream ends before removing the session entry.
+# This stops the counter from briefly hitting 0 between back-to-back requests
+# from the same player (seek, resolution switch, reconnect, etc.).
+_SESSION_LINGER = 8  # seconds
+
+# Bandwidth dedup: prevents double-counting the same byte-range within a short window.
 # Key: (client_ip, message_id, from_bytes)  Value: expiry timestamp
 _bw_tracked: Dict[Tuple[str, str, int], float] = {}
 _bw_lock = asyncio.Lock()
 
-# How long (seconds) to remember a (client, file, offset) tuple.
-# Any re-request within this window is treated as a duplicate.
-_BW_DEDUP_TTL = 60  # seconds
+# Only deduplicate within a tight 3-second window to catch browser probes.
+_BW_DEDUP_TTL = 3  # seconds
 
-# ── File metadata cache ───────────────────────────────────────────────────────
-# Keyed by file_hash → file doc so DB isn't hit on every chunk request.
+# File metadata cache: keyed by file_hash to avoid hitting DB on every chunk.
 _file_meta_cache: Dict[str, dict] = {}
 
 
 def _mime_for_filename(file_name: str, fallback: str) -> str:
-    """Return the best MIME type for *file_name*, falling back to *fallback*."""
     ext = "." + file_name.rsplit(".", 1)[-1].lower() if "." in file_name else ""
     if ext in _EXTENSION_MIME:
         return _EXTENSION_MIME[ext]
@@ -117,7 +112,6 @@ def _mime_for_filename(file_name: str, fallback: str) -> str:
 
 
 def is_browser_playable(mime: str) -> bool:
-    """Return True if the MIME type is natively playable in a modern browser."""
     return mime in _BROWSER_NATIVE_VIDEO or mime in _BROWSER_NATIVE_AUDIO
 
 
@@ -153,13 +147,6 @@ class ByteStreamer:
         self._start_background_task(self.clean_cache())
 
     def _start_background_task(self, coro) -> asyncio.Task:
-        """
-        Schedule *coro* as a tracked background task.
-
-        Tasks are stored in self._background_tasks so the garbage collector
-        never destroys them while they're still running (which is what causes
-        the "Task was destroyed but it is pending!" warning).
-        """
         task = asyncio.ensure_future(coro)
         self._background_tasks.add(task)
         task.add_done_callback(self._background_tasks.discard)
@@ -290,20 +277,6 @@ class ByteStreamer:
         part_count: int,
         chunk_size: int,
     ):
-        """
-        Fetch and yield Telegram file chunks using a high-throughput prefetch queue.
-
-        Design:
-        • A _fetch_worker coroutine runs concurrently, keeping up to
-          PREFETCH_COUNT chunks pre-fetched in an asyncio.Queue.
-        • The consumer (this generator) yields chunks as fast as the client
-          can accept them, with zero idle time between chunks.
-        • On client disconnect (CancelledError from response.write) the fetch
-          task is cleanly cancelled and awaited — no "Task destroyed but
-          pending" warnings.
-        • The fetch task is registered in self._background_tasks so the event
-          loop never drops it before cancellation completes.
-        """
         client        = self.client
         media_session = await self.generate_media_session(client, file_id)
         location      = await self.get_location(file_id)
@@ -313,7 +286,6 @@ class ByteStreamer:
         fetch_task: asyncio.Task | None = None
 
         async def _fetch_worker():
-            """Fetch all parts and push them into *queue*."""
             current_offset = offset
             for part_idx in range(part_count):
                 for attempt in range(_MAX_CHUNK_RETRIES):
@@ -415,7 +387,7 @@ class ByteStreamer:
             except asyncio.CancelledError:
                 pass
 
-        # ── Launch the fetch worker and track it properly ─────────────────────
+        # Launch the fetch worker
         fetch_task = asyncio.ensure_future(_fetch_worker())
         # Register so GC never destroys the task before we cancel+await it
         self._background_tasks.add(fetch_task)
@@ -450,7 +422,7 @@ class ByteStreamer:
         except Exception as exc:
             logger.error("yield_file: consumer error: %s", exc)
         finally:
-            # ── Critical: cancel then AWAIT the fetch task ─────────────────
+            # Cancel and await the fetch task on exit
             # Without awaiting, the task stays "pending" after the generator
             # is garbage-collected, producing:
             #   ERROR asyncio - Task was destroyed but it is pending!
@@ -496,7 +468,6 @@ def _parse_range(range_header: str, file_size: int):
 
 
 def _get_client_ip(request: web.Request) -> str:
-    """Return the best-effort client IP for session dedup."""
     forwarded = request.headers.get("X-Forwarded-For", "")
     if forwarded:
         return forwarded.split(",")[0].strip()
@@ -504,10 +475,6 @@ def _get_client_ip(request: web.Request) -> str:
 
 
 async def _register_session(session_key: str) -> bool:
-    """
-    Register an active streaming session.
-    Returns True if this is a *new* unique session, False if already tracked.
-    """
     async with _sessions_lock:
         _prune_stale_sessions()
         is_new = session_key not in _active_sessions
@@ -517,19 +484,19 @@ async def _register_session(session_key: str) -> bool:
 
 async def _unregister_session(session_key: str) -> None:
     async with _sessions_lock:
-        _active_sessions.pop(session_key, None)
+        if session_key in _active_sessions:
+            # Overwrite with a near-expiry timestamp instead of deleting immediately
+            _active_sessions[session_key] = time.monotonic() - (_SESSION_TTL - _SESSION_LINGER)
 
 
 def _prune_stale_sessions() -> None:
-    """Remove sessions that have been idle longer than _SESSION_TTL."""
-    now = time.monotonic()
+    now   = time.monotonic()
     stale = [k for k, ts in _active_sessions.items() if now - ts > _SESSION_TTL]
     for k in stale:
         del _active_sessions[k]
 
 
 def get_active_session_count() -> int:
-    """Return the number of currently active unique streaming sessions."""
     _prune_stale_sessions()
     return len(_active_sessions)
 
@@ -539,20 +506,15 @@ async def _should_track_bandwidth(
     message_id: str,
     from_bytes: int,
 ) -> bool:
-    """
-    Return True only if this (client_ip, message_id, from_bytes) combination
-    has NOT been tracked within the last _BW_DEDUP_TTL seconds.
-    """
     key = (client_ip, message_id, from_bytes)
     now = time.monotonic()
     async with _bw_lock:
-        # Prune expired entries
         expired = [k for k, exp in _bw_tracked.items() if now > exp]
         for k in expired:
             del _bw_tracked[k]
 
         if key in _bw_tracked:
-            return False  # duplicate — already counted
+            return False
 
         _bw_tracked[key] = now + _BW_DEDUP_TTL
         return True
@@ -576,7 +538,7 @@ class StreamingService:
         is_range_request = bool(range_header)
         client_ip        = _get_client_ip(request)
 
-        # ── File metadata (cached) ────────────────────────────────────────────
+        # File metadata (cached)
         if file_hash in _file_meta_cache:
             file_data = _file_meta_cache[file_hash]
         else:
@@ -585,7 +547,7 @@ class StreamingService:
                 raise web.HTTPNotFound(reason="file not found")
             _file_meta_cache[file_hash] = file_data
 
-        # ── Bandwidth guard ───────────────────────────────────────────────────
+        # Bandwidth guard
         if Config.get("bandwidth_mode", True):
             stats  = await self.db.get_bandwidth_stats()
             max_bw = Config.get("max_bandwidth", 107374182400)
@@ -627,7 +589,7 @@ class StreamingService:
             message_id, file_size, from_bytes, until_bytes, offset, part_count,
         )
 
-        # ── MIME resolution ───────────────────────────────────────────────────
+        # MIME resolution
         # Prioritise explicit DB mime_type, then file extension, then fallback.
         mime = (
             file_data.get("mime_type")
@@ -647,14 +609,16 @@ class StreamingService:
             "Content-Length":              str(req_length),
             "Content-Disposition":         f'{disposition}; filename="{file_name}"',
             "Accept-Ranges":               "bytes",
-            # Aggressive cache: allow intermediary caches to serve chunks
             "Cache-Control":               "public, max-age=3600",
             "Access-Control-Allow-Origin": "*",
             "Connection":                  "keep-alive",
-            # Performance hints
             "X-Content-Type-Options":      "nosniff",
-            # Tell the browser the full file size so it can skip ahead instantly
             "X-File-Size":                 str(file_size),
+            # Disable proxy/nginx output buffering so the first bytes reach
+            # the browser immediately — reduces initial playback delay.
+            "X-Accel-Buffering":           "no",
+            # Hint to the browser that the stream is a media resource
+            "Transfer-Encoding":           "identity",
         }
         if is_range_request:
             headers["Content-Range"] = f"bytes {from_bytes}-{until_bytes}/{file_size}"
@@ -680,6 +644,10 @@ class StreamingService:
                 try:
                     await response.write(chunk)
                     bytes_sent += len(chunk)
+                    # Drain write buffer after first chunk so the browser gets
+                    # data as soon as possible (reduces initial start time).
+                    if bytes_sent == len(chunk):
+                        await response.drain()
                 except (ConnectionResetError, BrokenPipeError):
                     # Client closed the connection mid-stream — normal for seeking
                     logger.debug(
@@ -703,18 +671,20 @@ class StreamingService:
         except Exception:
             pass
 
-        # ── Bandwidth accounting ──────────────────────────────────────────────
+        # Bandwidth accounting
+        # Always record actual bytes_sent. The dedup only blocks identical
+        # requests issued within the same 3-second browser-probe window so that
+        # genuine seeks, reconnects, and re-downloads are always counted.
         if bytes_sent > 0:
             should_track = await _should_track_bandwidth(client_ip, message_id, from_bytes)
             if should_track:
-                # Fire-and-forget — but track the task so it completes cleanly
                 task = asyncio.ensure_future(self.db.track_bandwidth(message_id, bytes_sent))
                 task.add_done_callback(
                     lambda t: t.exception() and logger.error("track_bandwidth error: %s", t.exception())
                 )
             else:
                 logger.debug(
-                    "bw dedup  msg=%s  ip=%s  from=%d  bytes=%d  (skipped)",
+                    "bw dedup  msg=%s  ip=%s  from=%d  bytes=%d  (probe duplicate skipped)",
                     message_id, client_ip, from_bytes, bytes_sent,
                 )
 

@@ -812,53 +812,44 @@ async def inline_query_handler(client: Client, inline_query):
     type_icon  = meta["icon"]
     type_label = meta["label"]
 
-    divider = "─" * 20
     text = (
-        f"{type_icon} **{safe_name}**\n"
-        f"{divider}\n"
-        f"📦 `{fmt_size}`  ·  🏷️ {type_label}\n"
+        f"✅ **{small_caps('file found')}!**\n\n"
+        f"📂 **{small_caps('name')}:** `{safe_name}`\n"
+        f"💾 **{small_caps('size')}:** `{fmt_size}`\n"
+        f"📊 **{small_caps('type')}:** `{type_label}`\n"
     )
     if is_streamable:
         text += (
-            f"\n🔗 **{small_caps('stream')}**\n`{stream_link}`\n"
-            f"\n⬇️ **{small_caps('download')}**\n`{download_link}`"
+            f"🎬 **{small_caps('streaming')}:** `Available`\n\n"
+            f"🔗 **{small_caps('stream link')}:**\n`{stream_link}`"
         )
     else:
         text += (
-            f"\n⬇️ **{small_caps('download')}**\n`{download_link}`"
+            f"\n🔗 **{small_caps('download link')}:**\n`{download_link}`"
         )
     text += f"\n\n🤖 _ᴠɪᴀ @{bot_username}_"
 
     btn_rows = []
     if is_streamable:
         btn_rows.append([
-            InlineKeyboardButton(f"▶️ {small_caps('stream')}",   url=stream_link),
-            InlineKeyboardButton(f"⬇️ {small_caps('download')}", url=download_link),
+            InlineKeyboardButton(f"🎬 {small_caps('stream')}",   url=stream_link),
+            InlineKeyboardButton(f"📥 {small_caps('download')}", url=download_link),
         ])
     else:
         btn_rows.append([
-            InlineKeyboardButton(f"⬇️ {small_caps('download')}", url=download_link),
+            InlineKeyboardButton(f"📥 {small_caps('download')}", url=download_link),
         ])
     btn_rows.append([
         InlineKeyboardButton(f"🤖 {small_caps('get via bot')}", url=telegram_link),
     ])
     markup = InlineKeyboardMarkup(btn_rows)
 
-    # ── Thumbnail icons for inline results ───────────────────────────────────
-    # High-quality 3D emoji icons from Microsoft's Fluent UI Emoji set.
-    # Served via raw GitHub CDN — globally cached, zero rate-limits, PNG format.
-    # Telegram requires thumb_url to be a valid HTTPS image URL (PNG preferred).
     _CDN_THUMBS = {
-        # 🎬 Video — Clapper Board 3D
         "video":    "https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Clapper%20board/3D/clapper_board_3d.png",
-        # 🎵 Audio — Headphone 3D
         "audio":    "https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Headphone/3D/headphone_3d.png",
-        # 🖼️ Image — Framed Picture 3D
         "image":    "https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Framed%20picture/3D/framed_picture_3d.png",
-        # 📄 Document — Page Facing Up 3D
         "document": "https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Page%20facing%20up/3D/page_facing_up_3d.png",
     }
-    # 📁 Default — Open File Folder 3D
     _CDN_DEFAULT = "https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Open%20file%20folder/3D/open_file_folder_3d.png"
     thumb_url = _CDN_THUMBS.get(file_type, _CDN_DEFAULT)
 
