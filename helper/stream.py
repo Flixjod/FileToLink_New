@@ -612,6 +612,14 @@ class StreamingService:
         disposition = "attachment" if is_download else "inline"
         status      = 206 if is_range_request else 200
 
+        # Build the thumbnail URL — used by external players (VLC, MX Player)
+        # that read HTTP response headers to locate poster/cover art.
+        _base_url = str(request.url.origin())
+        _thumb_url = (
+            file_data.get("thumbnail_url")
+            or f"{_base_url}/thumbnail/{file_hash}"
+        )
+
         headers = {
             "Content-Type":                mime,
             "Content-Length":              str(req_length),
@@ -627,6 +635,9 @@ class StreamingService:
             "Keep-Alive":                  "timeout=60, max=1000",
             "X-Content-Type-Options":      "nosniff",
             "X-File-Size":                 str(file_size),
+            # Expose thumbnail to external players.
+            # VLC reads the artwork URL from custom headers when served inline.
+            "X-Thumbnail-URL":             _thumb_url,
         }
         if is_range_request:
             headers["Content-Range"] = f"bytes {from_bytes}-{until_bytes}/{file_size}"

@@ -8,8 +8,16 @@
   <link rel="shortcut icon" type="image/jpeg" href="https://i.ibb.co/2YsHg8tf/IMG-3062.jpg">
   <link rel="apple-touch-icon" href="https://i.ibb.co/2YsHg8tf/IMG-3062.jpg">
   <meta property="og:title" content="{{ file_name }}">
-  <meta property="og:image" content="https://i.ibb.co/KzqHfL05/photo-2026-02-07-13-38-13.jpg">
+  <meta property="og:image" content="{{ thumbnail_url }}">
   <meta property="og:description" content="Watch {{ file_name }} — stream or download instantly.">
+  <meta property="og:type" content="video.other">
+  <meta property="og:video" content="{{ stream_url }}">
+  <meta property="og:video:secure_url" content="{{ stream_url }}">
+  <meta property="og:video:type" content="{{ mime_type }}">
+  <meta name="twitter:card" content="player">
+  <meta name="twitter:title" content="{{ file_name }}">
+  <meta name="twitter:image" content="{{ thumbnail_url }}">
+  <meta name="twitter:player" content="{{ stream_url }}">
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.6.0/css/all.min.css">
   <style>
@@ -650,31 +658,10 @@
       letter-spacing: .02em;
     }
 
-    /* Volume group */
+    /* Volume group — slider hidden, mute button only */
     .vol-group { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
     .vol-slider {
-      -webkit-appearance: none;
-      appearance: none;
-      width: 62px; height: 3px;
-      border-radius: 999px;
-      background: rgba(255,255,255,.28);
-      outline: none;
-      cursor: pointer;
-    }
-    .vol-slider::-webkit-slider-thumb {
-      -webkit-appearance: none;
-      width: 11px; height: 11px;
-      border-radius: 50%;
-      background: #fff;
-      cursor: pointer;
-      box-shadow: 0 1px 4px rgba(0,0,0,.4);
-    }
-    .vol-slider::-moz-range-thumb {
-      width: 11px; height: 11px;
-      border-radius: 50%;
-      background: #fff;
-      cursor: pointer;
-      border: none;
+      display: none !important;
     }
 
     .ctrl-spacer { flex: 1; min-width: 0; }
@@ -794,53 +781,54 @@
     /* ── UI Layer: when settings open, intercept all non-settings clicks ── */
     .settings-layer {
       display: none;
-      position: absolute;
+      position: fixed;
       inset: 0;
-      z-index: 199;         /* below popup (200) but above video content */
+      /* z-index: below popup (9999) and above ctrl-bar (2001) */
+      z-index: 9998;
       background: transparent;
       cursor: default;
+      pointer-events: none; /* inactive until .active */
     }
-    .settings-layer.active { display: block; }
-    /* On mobile the layer must be fixed and cover the full viewport */
-    @media (max-width: 600px) {
-      .settings-layer {
-        position: fixed;
-        z-index: 2001;     /* between ctrl-bar and popup */
-      }
+    .settings-layer.active {
+      display: block;
+      pointer-events: auto;
     }
 
-    /* ── Settings popup ──────────────────────────────────────
-       Lives inside .video-wrapper (isolation:isolate).
-       z-index: 200 on desktop; overridden to 2002 on mobile.
-       The ctrl-bar sits at z-index 2001 so it is always
-       accessible even when the mobile overlay backdrop is active.
-    ────────────────────────────────────────────────────────── */
+    /* ── Settings popup ─────────────────────────────────────────────────────
+       Always position: fixed so it escapes any stacking-context clipping
+       (isolation, overflow:hidden) and renders above every other element.
+       z-index: 9999 — topmost layer on both desktop and mobile.
+       The ctrl-bar (z-index 2001) is BELOW this popup but the settings
+       button inside it uses pointer-events:auto so it remains clickable.
+    ──────────────────────────────────────────────────────────────────────── */
     .settings-popup {
-      position: absolute;
-      bottom: 54px;
-      right: 8px;
+      position: fixed;
+      bottom: 70px;
+      right: 18px;
       background: var(--popup-bg);
       border: 1px solid var(--popup-border);
       border-radius: 16px;
       box-shadow: var(--popup-shadow);
       padding: 4px 4px 6px;
-      min-width: 248px;
-      max-width: calc(100vw - 24px);
-      z-index: 200;
+      min-width: 260px;
+      max-width: calc(100vw - 32px);
+      /* highest possible z-index — above ctrl-bar, overlay and everything */
+      z-index: 9999;
       opacity: 0;
       transform: translateY(10px) scale(.95);
       pointer-events: none;
       transition: opacity .2s ease, transform .2s cubic-bezier(.34,1.56,.64,1);
       backdrop-filter: blur(18px);
       -webkit-backdrop-filter: blur(18px);
-      isolation: isolate;
+      /* No isolation:isolate — we want this to break out of any parent context */
     }
 
-    /* Mobile: bottom sheet — z-index (2002) above ctrl-bar (2001) and overlay (1999) */
+    /* Mobile: bottom sheet anchored to viewport bottom */
     @media (max-width: 600px) {
       .settings-popup {
-        position: fixed;
-        bottom: 0; left: 0; right: 0; top: auto;
+        bottom: 0;
+        right: 0;
+        left: 0;
         border-radius: 18px 18px 0 0;
         min-width: unset;
         max-width: 100vw;
@@ -848,7 +836,6 @@
         transform: translateY(20px) scale(1);
         max-height: 78vh;
         overflow-y: auto;
-        z-index: 2002;
       }
     }
 
@@ -856,9 +843,6 @@
       opacity: 1;
       transform: translateY(0) scale(1);
       pointer-events: all;
-      /* On mobile the popup is fixed, so it must be above the ctrl-bar.
-         The ctrl-bar has z-index 2001; this popup uses 2002 on mobile
-         (set in the media query above) and 200 on desktop (set above). */
     }
 
     /* Settings popup header */
@@ -1045,25 +1029,24 @@
     .track-item i { font-size: .66rem; width: 13px; color: #667eea; flex-shrink: 0; }
     .no-tracks { padding: 5px 12px 3px; font-size: .73rem; color: var(--text-muted); font-style: italic; }
 
-    /* ── Settings Overlay (mobile backdrop) ────────── */
+    /* ── Settings Overlay (full-viewport backdrop) ────
+       Shown on both desktop and mobile when settings are open.
+       z-index: 9997 — below layer (9998) which is below popup (9999).
+       Clicking this closes the settings.                              */
     .settings-overlay {
       display: none;
       position: fixed;
       inset: 0;
-      background: rgba(0,0,0,.5);
-      /* z-index sits between ctrl-bar (10) and the popup (2000).
-         pointer-events:none keeps the ctrl-bar and its buttons fully
-         clickable even when the overlay is active on mobile.
-         The popup itself (pointer-events:all when .open) handles taps. */
-      z-index: 1999;
+      background: rgba(0,0,0,.55);
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+      z-index: 9997;
       pointer-events: none;
     }
     .settings-overlay.active {
       display: block;
       pointer-events: auto;
     }
-    /* Never show the overlay on desktop — the popup is absolute inside the player */
-    @media (min-width: 601px) { .settings-overlay { display: none !important; } }
 
     /* non-video file card */
     .doc-card {
@@ -1292,12 +1275,22 @@
       .info-panel { flex-direction: column; align-items: flex-start; gap: 12px; }
       .clr { margin-left: 0; }
       .idiv { display: none; }
-      .vol-slider { width: 48px; }
       .ctrl-sep { display: none; }
     }
     @media (max-width: 420px) {
       .ctrl-time { display: none; }
-      .vol-slider { width: 38px; }
+    }
+
+    /* ── Settings overlay fix: full-viewport backdrop, non-blurring ────────
+       The overlay dims the page but must NOT blur the settings popup itself.
+       It sits below the popup (z-index: 9998) and above every other element.
+       pointer-events are removed from .settings-layer (desktop helper div)
+       so the ctrl-bar buttons stay reachable at all times.
+    ──────────────────────────────────────────────────────────────────────── */
+    .settings-overlay {
+      background: rgba(0,0,0,0.55);
+      backdrop-filter: none !important;
+      -webkit-backdrop-filter: none !important;
     }
   </style>
 </head>
@@ -1386,12 +1379,16 @@
                                     bandwidth before the user presses play, and
                                     lets the browser start rendering faster.
                crossorigin        → enables CORS caching by shared proxies.
+               poster             → shows the thumbnail before & between playback
+                                    (also picked up by external players via stream
+                                    metadata headers injected by the server).
                src on <video>     → cleaner range-request handling vs <source>. -->
           <video id="player"
                  playsinline
                  webkit-playsinline
                  preload="metadata"
                  crossorigin="anonymous"
+                 poster="{{ thumbnail_url }}"
                  src="{{ stream_url }}">
           </video>
 
@@ -1510,15 +1507,11 @@
 
             <div class="ctrl-spacer"></div>
 
-            <!-- Volume / Mute -->
+            <!-- Volume / Mute (slider removed — mute toggle only) -->
             <div class="vol-group">
               <button class="ctrl-btn" id="mute-btn" onclick="toggleMute()" title="Mute/Unmute (M)">
                 <i class="fa-solid fa-volume-high" id="mute-icon"></i>
               </button>
-              <input type="range" class="vol-slider" id="vol-slider"
-                     min="0" max="1" step="0.02" value="1"
-                     aria-label="Volume"
-                     oninput="setVolume(this.value)">
             </div>
 
             <div class="ctrl-sep"></div>
@@ -1682,13 +1675,14 @@
   }
 
   // Template variables
-  const STREAM_URL      = {{ stream_url | tojson }};
-  const DOWNLOAD_URL    = {{ download_url | tojson }};
-  const FILE_NAME       = {{ file_name | tojson }};
-  const FILE_TYPE       = {{ file_type | tojson }};
-  const MIME_TYPE       = {{ mime_type | tojson }};
+  const STREAM_URL       = {{ stream_url | tojson }};
+  const DOWNLOAD_URL     = {{ download_url | tojson }};
+  const FILE_NAME        = {{ file_name | tojson }};
+  const FILE_TYPE        = {{ file_type | tojson }};
+  const MIME_TYPE        = {{ mime_type | tojson }};
   const BROWSER_PLAYABLE = {{ 'true' if browser_playable else 'false' }};
-  const BOT_NAME        = {{ bot_name | tojson }};
+  const BOT_NAME         = {{ bot_name | tojson }};
+  const THUMBNAIL_URL    = {{ thumbnail_url | tojson }};
 
   // Video player bootstrap
   const video   = document.getElementById('player');
@@ -1808,10 +1802,13 @@
       if (playIcon) playIcon.className = 'fa-solid fa-play';
     });
 
-    /* Click on video to play/pause */
-    video.addEventListener('click', () => {
-      if (settingsOpen) { closeSettings(); return; }
-      togglePlay();
+    /* Tap/click on the video area is intentionally a no-op.
+       Playback is controlled exclusively via the Play/Pause button.
+       If settings happen to be open and the user clicks the video area,
+       we still close the menu — but do NOT toggle playback. */
+    video.addEventListener('click', (e) => {
+      if (settingsOpen) { closeSettings(); }
+      // No togglePlay() — tap-to-pause/resume is disabled.
     });
 
     /* Seek via progress bar */
@@ -2019,8 +2016,7 @@
   function toggleMute() {
     if (!video) return;
     video.muted = !video.muted;
-    const slider = document.getElementById('vol-slider');
-    if (slider) slider.value = video.muted ? 0 : video.volume;
+    // vol-slider is removed from UI; no DOM reference needed
     updateMuteIcon();
   }
   function updateMuteIcon() {
@@ -2391,20 +2387,14 @@
       case 'arrowup':
         if (video) {
           e.preventDefault();
-          const nv = Math.min(1, video.volume + 0.1);
-          video.volume = nv;
-          const slider = document.getElementById('vol-slider');
-          if (slider) slider.value = nv;
+          video.volume = Math.min(1, video.volume + 0.1);
           updateMuteIcon();
         }
         break;
       case 'arrowdown':
         if (video) {
           e.preventDefault();
-          const nv = Math.max(0, video.volume - 0.1);
-          video.volume = nv;
-          const slider = document.getElementById('vol-slider');
-          if (slider) slider.value = nv;
+          video.volume = Math.max(0, video.volume - 0.1);
           updateMuteIcon();
         }
         break;

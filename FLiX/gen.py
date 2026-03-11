@@ -568,14 +568,16 @@ async def cb_owner_revoke_confirm(client: Client, callback: CallbackQuery):
 
     safe_name = escape_markdown(file_data["file_name"])
     await callback.message.edit_text(
-        f"⚠️ **{small_caps('confirm revoke')}**\n\n"
-        f"ᴀʀᴇ ʏᴏᴜ ꜱᴜʀᴇ ʏᴏᴜ ᴡᴀɴᴛ ᴛᴏ ᴘᴇʀᴍᴀɴᴇɴᴛʟʏ ʀᴇᴠᴏᴋᴇ:\n\n"
+        f"⚠️ **{small_caps('revoke file access')}**\n\n"
+        f"Are you sure you want to **permanently revoke** access to this file?\n\n"
         f"📂 **{small_caps('file')}:** `{safe_name}`\n\n"
-        "ᴀʟʟ ʟɪɴᴋꜱ ᴡɪʟʟ ʙᴇᴄᴏᴍᴇ ɪɴᴠᴀʟɪᴅ.",
+        f"⛔ **This action cannot be undone.**\n"
+        f"All stream and download links will be permanently disabled,\n"
+        f"and the file will no longer be accessible by anyone.",
         reply_markup=InlineKeyboardMarkup([
             [
-                InlineKeyboardButton(f"✅ {small_caps('yes')}", callback_data=f"ownrevoke_yes_{file_hash}_{target_id}"),
-                InlineKeyboardButton(f"❌ {small_caps('no')}",  callback_data=f"ownrevoke_no_{target_id}"),
+                InlineKeyboardButton(f"✅ {small_caps('yes, revoke')}", callback_data=f"ownrevoke_yes_{file_hash}_{target_id}"),
+                InlineKeyboardButton(f"❌ {small_caps('cancel')}",       callback_data=f"ownrevoke_no_{target_id}"),
             ]
         ]),
     )
@@ -673,14 +675,16 @@ async def cb_revoke_confirm(client: Client, callback: CallbackQuery):
 
     safe_name = escape_markdown(file_data["file_name"])
     await callback.message.edit_text(
-        f"⚠️ **{small_caps('confirm revoke')}**\n\n"
-        f"ᴀʀᴇ ʏᴏᴜ ꜱᴜʀᴇ ʏᴏᴜ ᴡᴀɴᴛ ᴛᴏ ᴘᴇʀᴍᴀɴᴇɴᴛʟʏ ʀᴇᴠᴏᴋᴇ:\n\n"
+        f"⚠️ **{small_caps('revoke file access')}**\n\n"
+        f"Are you sure you want to **permanently revoke** access to this file?\n\n"
         f"📂 **{small_caps('file')}:** `{safe_name}`\n\n"
-        "ᴀʟʟ ʟɪɴᴋꜱ ᴡɪʟʟ ʙᴇᴄᴏᴍᴇ ɪɴᴠᴀʟɪᴅ.",
+        f"⛔ **This action cannot be undone.**\n"
+        f"All stream and download links will be permanently disabled,\n"
+        f"and the file will no longer be accessible by anyone.",
         reply_markup=InlineKeyboardMarkup([
             [
-                InlineKeyboardButton(f"✅ {small_caps('yes')}", callback_data=f"revoke_yes_{file_hash}_{back_page}"),
-                InlineKeyboardButton(f"❌ {small_caps('no')}",  callback_data=f"revoke_no_{back_page}"),
+                InlineKeyboardButton(f"✅ {small_caps('yes, revoke')}", callback_data=f"revoke_yes_{file_hash}_{back_page}"),
+                InlineKeyboardButton(f"❌ {small_caps('cancel')}",       callback_data=f"revoke_no_{back_page}"),
             ]
         ]),
     )

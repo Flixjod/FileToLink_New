@@ -152,6 +152,17 @@ def build_app(bot: Bot, database) -> web.Application:
         )
         playable = is_browser_playable(mime)
 
+        # Thumbnail: use the file's own thumbnail endpoint when available,
+        # otherwise fall back to the default branded poster image so that
+        # external players (VLC, MX Player) always get a valid poster URL.
+        _DEFAULT_THUMBNAIL = "https://i.ibb.co/KzqHfL05/photo-2026-02-07-13-38-13.jpg"
+        thumbnail_url = (
+            file_data.get("thumbnail_url")
+            or f"{base}/thumbnail/{file_hash}"
+            if file_type in ("video", "audio")
+            else _DEFAULT_THUMBNAIL
+        ) or _DEFAULT_THUMBNAIL
+
         info = _bot_info(bot)
         context = {
             "bot_name":         info["bot_name"],
@@ -165,12 +176,66 @@ def build_app(bot: Bot, database) -> web.Application:
             "stream_url":       f"{base}/stream/{file_hash}",
             "download_url":     f"{base}/dl/{file_hash}",
             "telegram_url":     f"https://t.me/{info['bot_username']}?start={file_hash}",
+            "thumbnail_url":    thumbnail_url,
         }
         return aiohttp_jinja2.render_template("stream.html", request, context)
 
     async def download_file(request: web.Request):
         file_hash = request.match_info["file_hash"]
         return await _tracked_stream(request, file_hash, is_download=True)
+
+    async def thumbnail_file(request: web.Request):
+        """Serve the Telegram-side thumbnail for a file so external players
+        (VLC, MX Player) can display a cover art / poster image.
+
+        The endpoint tries, in order:
+          1. The ``thumbnail_url`` field stored in the DB (pre-fetched path).
+          2. Download the first thumbnail of the media from Telegram and
+             stream it back as image/jpeg.
+          3. Return a 302 redirect to the default branded poster image.
+        """
+        _DEFAULT_THUMB = "https://i.ibb.co/KzqHfL05/photo-2026-02-07-13-38-13.jpg"
+        file_hash = request.match_info["file_hash"]
+
+        file_data = await database.get_file_by_hash(file_hash)
+        if not file_data:
+            raise web.HTTPNotFound(reason="file not found")
+
+        # 1. Stored URL shortcut
+        stored = file_data.get("thumbnail_url")
+        if stored:
+            raise web.HTTPFound(stored)
+
+        # 2. Try to pull the thumbnail from Telegram
+        try:
+            msg = await bot.get_messages(
+                Config.FLOG_CHAT_ID, int(file_data["message_id"])
+            )
+            media = (
+                getattr(msg, "video",    None)
+                or getattr(msg, "document", None)
+                or getattr(msg, "audio",    None)
+            )
+            thumbs = getattr(media, "thumbs", None) or []
+            if thumbs:
+                # Largest thumbnail
+                best = max(thumbs, key=lambda t: getattr(t, "file_size", 0) or 0)
+                data = await bot.download_media(best.file_id, in_memory=True)
+                if data:
+                    raw = bytes(data.getbuffer()) if hasattr(data, "getbuffer") else data.read()
+                    return web.Response(
+                        body=raw,
+                        content_type="image/jpeg",
+                        headers={
+                            "Cache-Control": "public, max-age=86400",
+                            "Access-Control-Allow-Origin": "*",
+                        },
+                    )
+        except Exception as exc:
+            logger.debug("thumbnail_file: could not fetch thumbnail for %s: %s", file_hash, exc)
+
+        # 3. Fallback redirect
+        raise web.HTTPFound(_DEFAULT_THUMB)
 
     async def _collect_panel_data():
         try:
@@ -336,15 +401,16 @@ def build_app(bot: Bot, database) -> web.Application:
             return await api_health(request)
         raise web.HTTPFound("/bot_settings")
 
-    app.router.add_get("/",                   home)
-    app.router.add_get("/stream/{file_hash}", stream_page)
-    app.router.add_get("/dl/{file_hash}",     download_file)
-    app.router.add_get("/bot_settings",       bot_settings_page)
-    app.router.add_get("/api/stats",          api_stats)
-    app.router.add_get("/api/bandwidth",      api_bandwidth)
-    app.router.add_get("/api/health",         api_health)
-    app.router.add_get("/stats",              stats_endpoint)
-    app.router.add_get("/bandwidth",          bandwidth_endpoint)
-    app.router.add_get("/health",             health_endpoint)
+    app.router.add_get("/",                        home)
+    app.router.add_get("/stream/{file_hash}",      stream_page)
+    app.router.add_get("/dl/{file_hash}",          download_file)
+    app.router.add_get("/thumbnail/{file_hash}",   thumbnail_file)
+    app.router.add_get("/bot_settings",            bot_settings_page)
+    app.router.add_get("/api/stats",               api_stats)
+    app.router.add_get("/api/bandwidth",           api_bandwidth)
+    app.router.add_get("/api/health",              api_health)
+    app.router.add_get("/stats",                   stats_endpoint)
+    app.router.add_get("/bandwidth",               bandwidth_endpoint)
+    app.router.add_get("/health",                  health_endpoint)
 
     return app

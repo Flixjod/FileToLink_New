@@ -439,16 +439,18 @@ async def revoke_command(client: Client, message: Message):
     await client.send_message(
         chat_id=message.chat.id,
         text=(
-            f"⚠️ **{small_caps('confirm revoke')}**\n\n"
-            "ᴀʀᴇ ʏᴏᴜ ꜱᴜʀᴇ ʏᴏᴜ ᴡᴀɴᴛ ᴛᴏ ᴘᴇʀᴍᴀɴᴇɴᴛʟʏ ʀᴇᴠᴏᴋᴇ:\n\n"
+            f"⚠️ **{small_caps('revoke file access')}**\n\n"
+            f"Are you sure you want to **permanently revoke** access to this file?\n\n"
             f"📂 **{small_caps('file')}:** `{safe_name}`\n\n"
-            "ᴀʟʟ ʟɪɴᴋꜱ ᴡɪʟʟ ʙᴇᴄᴏᴍᴇ ɪɴᴠᴀʟɪᴅ."
+            f"⛔ **This action cannot be undone.**\n"
+            f"All stream and download links will be permanently disabled,\n"
+            f"and the file will no longer be accessible by anyone."
         ),
         reply_to_message_id=message.id,
         reply_markup=InlineKeyboardMarkup([
             [
-                InlineKeyboardButton(f"✅ {small_caps('yes')}", callback_data=f"revoke_{file_hash}"),
-                InlineKeyboardButton(f"❌ {small_caps('no')}",  callback_data="revoke_no_1"),
+                InlineKeyboardButton(f"✅ {small_caps('yes, revoke')}", callback_data=f"revoke_{file_hash}"),
+                InlineKeyboardButton(f"❌ {small_caps('cancel')}",       callback_data="revoke_no_1"),
             ]
         ]),
     )
