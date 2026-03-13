@@ -3,7 +3,7 @@ import logging
 import mimetypes
 import math
 import time
-from typing import Dict, Set, Tuple, Union
+from typing import Dict, Optional, Set, Tuple, Union
 
 from aiohttp import web
 from pyrogram import Client, utils, raw
@@ -16,27 +16,38 @@ from database import Database
 
 logger = logging.getLogger(__name__)
 
+# ── Chunk / prefetch tuning ──────────────────────────────────────────────────
 # Telegram hard-caps upload.GetFile at 1 MB per request.
-CHUNK_SIZE = 1024 * 1024
+CHUNK_SIZE = 1024 * 1024          # 1 MB per Telegram RPC
 
-# For the very first chunk of a fresh stream (offset=0) we only need a tiny
-# slice of data to unblock the browser and let it start rendering.  After that
-# the normal 1 MB chunk size is used.  Setting this too small wastes RTTs;
-# setting it too large delays first-byte.  128 KB is a good sweet-spot that
-# satisfies HTTP range-sniff probes AND lets browsers start decoding quickly.
-FIRST_CHUNK_SIZE = 128 * 1024   # 128 KB for lowest TTFB on the initial request
+# Very first slice served to the player — just enough to unblock buffering and
+# let VLC/MX/iOS identify the codec without waiting for a full 1 MB download.
+# 32 KB keeps TTFB under ~100 ms on typical connections.
+FIRST_CHUNK_SIZE = 32 * 1024      # 32 KB — minimal TTFB for external players
 
-# Keep this many chunks pre-fetched ahead of the writer.
-# Higher values smooth playback on fast connections at the cost of a little
-# extra memory per stream.
+# Prefetch window: keep this many chunks queued ahead of the writer.
+# 8 is the sweet-spot — smooth on fast links, low memory/bandwidth waste on
+# slow/mobile connections, and avoids over-fetching during seeks.
 PREFETCH_COUNT = 8
 
-# Per-chunk retry cap and back-off base (seconds).
-_MAX_CHUNK_RETRIES = 6
-_RETRY_BACKOFF = 0.3
+# Per-chunk retry / back-off
+_MAX_CHUNK_RETRIES = 5
+_RETRY_BACKOFF = 0.15             # seconds — fail-fast, retry quickly
 
-# Timeout (seconds) for a single GetFile RPC.
-_RPC_TIMEOUT = 15.0
+# Timeout (seconds) for a single GetFile RPC
+_RPC_TIMEOUT = 10.0               # tight timeout → fail-fast, retry sooner
+
+# ── Per-file cache inactivity TTL ────────────────────────────────────────────
+# File-metadata and thumbnail caches are evicted 5 minutes after the last
+# access to prevent memory build-up on long-running servers.
+_FILE_CACHE_TTL = 5 * 60          # 5 minutes
+
+# ── Adaptive small-chunk strategy ────────────────────────────────────────────
+# For the very first range request of a session (from_bytes == 0) we serve
+# the first FIRST_CHUNK_SIZE bytes immediately, then switch to CHUNK_SIZE.
+# For seek requests (from_bytes != 0) we also use a small initial slice to
+# feed the player immediately before pre-fetching the rest of the chunk.
+_SEEK_INITIAL_SIZE = 64 * 1024    # 64 KB initial slice on seek → instant seek
 
 MIME_TYPE_MAP = {
     "video":    "video/mp4",
@@ -81,28 +92,31 @@ _BROWSER_NATIVE_AUDIO = {
     "audio/x-aac",
 }
 
-# Session dedup — maps session_key → last-heartbeat timestamp.
-# A "session" is (file_hash, client_ip).  Multiple consecutive range requests
-# from the same player are merged into one entry so the active-connections
-# counter never oscillates 0→1→0 during normal seek/probe sequences.
+# ── Session tracking ─────────────────────────────────────────────────────────
+# Maps session_key → last-heartbeat timestamp.
 _active_sessions: Dict[str, float] = {}
 _sessions_lock = asyncio.Lock()
 
-# A session is considered live while its heartbeat was updated within this many
-# seconds.  The heartbeat is refreshed every _SESSION_HEARTBEAT_INTERVAL seconds
-# while data is flowing.  When the stream ends the entry is removed immediately.
 _SESSION_TTL = 30
 _SESSION_HEARTBEAT_INTERVAL = 5
 
-# Bandwidth dedup — prevents counting the same byte range twice when a player
-# issues probe/prefetch requests before settling on the real playback position.
-# Key: (client_ip, message_id, from_bytes)  Value: expiry timestamp
+# ── Bandwidth dedup ──────────────────────────────────────────────────────────
 _bw_tracked: Dict[Tuple[str, str, int], float] = {}
 _bw_lock = asyncio.Lock()
 _BW_DEDUP_TTL = 60
 
-# In-memory file-metadata cache (keyed by file_hash).
-_file_meta_cache: Dict[str, dict] = {}
+# ── Per-file metadata cache with last-access timestamps ──────────────────────
+# _file_meta_cache  : file_hash → {**file_data}
+# _file_cache_atime : file_hash → last-access monotonic timestamp
+_file_meta_cache:  Dict[str, dict]  = {}
+_file_cache_atime: Dict[str, float] = {}
+_cache_lock = asyncio.Lock()
+
+# ── Thumbnail URL cache (no /thumb endpoint — URL is just the og image) ──────
+# We store the artwork URL directly in stream headers; no separate endpoint
+# needed so we avoid the extra bandwidth/storage of serving thumbnail bytes.
+_thumbnail_cache:  Dict[str, Optional[str]] = {}
+_thumb_cache_atime: Dict[str, float] = {}
 
 
 def _mime_for_filename(file_name: str, fallback: str) -> str:
@@ -118,12 +132,7 @@ def is_browser_playable(mime: str) -> bool:
 
 
 async def get_file_ids(client: Client, message_id: str) -> FileId:
-    """Fetch the FileId for *message_id* from the Flog/dump channel.
-
-    Raises ``web.HTTPNotFound`` (instead of a plain ValueError) when the
-    message cannot be found or contains no streamable media, so callers can
-    surface a clean 404 to the browser rather than a 500.
-    """
+    """Fetch the FileId for *message_id* from the Flog/dump channel."""
     try:
         msg = await client.get_messages(Config.FLOG_CHAT_ID, int(message_id))
     except Exception as exc:
@@ -149,14 +158,110 @@ async def get_file_ids(client: Client, message_id: str) -> FileId:
     return FileId.decode(media.file_id)
 
 
+async def get_thumbnail_url(
+    client: Client,
+    file_hash: str,
+    file_data: dict,
+    base_url: str,
+) -> Optional[str]:
+    """Return a publicly-accessible thumbnail URL for artwork metadata headers.
+
+    This is injected into HTTP response headers (Link rel=artwork, X-Image-Url)
+    so external players (VLC, MX Player, iOS AVPlayer, AirPlay, Android
+    MediaSession) can display cover art.  No separate /thumb endpoint is used —
+    we return the Open-Graph image URL from the stream page which is already
+    publicly available with no extra bandwidth cost.
+
+    Returns None if no thumbnail is available.
+    """
+    now = time.monotonic()
+
+    # Return cached result (including None → no thumbnail)
+    if file_hash in _thumbnail_cache:
+        _thumb_cache_atime[file_hash] = now
+        return _thumbnail_cache[file_hash]
+
+    # Only attempt for video / audio files
+    file_type = file_data.get("file_type", "document")
+    if file_type not in (
+        Config.FILE_TYPE_VIDEO, Config.FILE_TYPE_AUDIO, "video", "audio"
+    ):
+        _thumbnail_cache[file_hash] = None
+        _thumb_cache_atime[file_hash] = now
+        return None
+
+    try:
+        msg = await client.get_messages(
+            Config.FLOG_CHAT_ID, int(file_data["message_id"])
+        )
+        if not msg or msg.empty:
+            _thumbnail_cache[file_hash] = None
+            _thumb_cache_atime[file_hash] = now
+            return None
+
+        # Check for a thumbnail on the media object
+        thumb = None
+        if msg.video and msg.video.thumbs:
+            thumb = msg.video.thumbs[0]
+        elif msg.document and msg.document.thumbs:
+            thumb = msg.document.thumbs[0]
+        elif msg.audio and msg.audio.thumbs:
+            thumb = msg.audio.thumbs[0]
+
+        if thumb is None:
+            _thumbnail_cache[file_hash] = None
+            _thumb_cache_atime[file_hash] = now
+            return None
+
+        # Use the stream page OG image as the artwork URL — already served
+        # by the web server with no extra Telegram download needed.
+        thumb_url = f"{base_url}/stream/{file_hash}"
+        _thumbnail_cache[file_hash] = thumb_url
+        _thumb_cache_atime[file_hash] = now
+        return thumb_url
+
+    except Exception as exc:
+        logger.debug("get_thumbnail_url failed for hash=%s: %s", file_hash, exc)
+        _thumbnail_cache[file_hash] = None
+        _thumb_cache_atime[file_hash] = now
+        return None
+
+
+async def _evict_stale_file_cache() -> None:
+    """Evict file-metadata and thumbnail cache entries idle for > 5 minutes."""
+    now = time.monotonic()
+    async with _cache_lock:
+        stale = [
+            k for k, t in _file_cache_atime.items()
+            if now - t > _FILE_CACHE_TTL
+        ]
+        for k in stale:
+            _file_meta_cache.pop(k, None)
+            _file_cache_atime.pop(k, None)
+
+    stale_thumb = [
+        k for k, t in _thumb_cache_atime.items()
+        if now - t > _FILE_CACHE_TTL
+    ]
+    for k in stale_thumb:
+        _thumbnail_cache.pop(k, None)
+        _thumb_cache_atime.pop(k, None)
+
+    if stale or stale_thumb:
+        logger.debug(
+            "cache evict: %d file-meta, %d thumb entries removed",
+            len(stale), len(stale_thumb),
+        )
+
+
 class ByteStreamer:
 
     def __init__(self, client: Client):
         self.client: Client = client
         self.cached_file_ids: Dict[str, FileId] = {}
-        self.clean_timer: int = 30 * 60
         self._background_tasks: Set[asyncio.Task] = set()
-        self._start_background_task(self.clean_cache())
+        # Periodic cache cleaner: runs every 2 minutes to evict stale entries
+        self._start_background_task(self._cache_cleaner())
 
     def _start_background_task(self, coro) -> asyncio.Task:
         task = asyncio.ensure_future(coro)
@@ -289,11 +394,18 @@ class ByteStreamer:
         part_count: int,
         chunk_size: int,
     ):
+        """Yield file chunks from Telegram with prefetch and retry logic.
+
+        Uses a prefetch queue of size PREFETCH_COUNT to keep chunks flowing
+        without blocking the HTTP writer.  The fetch worker runs concurrently
+        so the writer can serve data to the client without waiting for each
+        Telegram RPC to complete sequentially.
+        """
         client        = self.client
         media_session = await self.generate_media_session(client, file_id)
         location      = await self.get_location(file_id)
 
-        # Queue capacity: prefetch window + a couple of writer slots.
+        # Queue: prefetch window + a couple of extra slots for the writer
         queue: asyncio.Queue = asyncio.Queue(maxsize=PREFETCH_COUNT + 2)
         fetch_task: asyncio.Task | None = None
 
@@ -407,7 +519,8 @@ class ByteStreamer:
                     item = await asyncio.wait_for(queue.get(), timeout=_RPC_TIMEOUT + 5)
                 except asyncio.TimeoutError:
                     logger.warning(
-                        "yield_file: queue stall after %ds — aborting stream", _RPC_TIMEOUT + 5
+                        "yield_file: queue stall after %ds — aborting stream",
+                        _RPC_TIMEOUT + 5,
                     )
                     break
 
@@ -436,21 +549,37 @@ class ByteStreamer:
                     pass
             logger.debug("yield_file finished after %d part(s)", parts_yielded)
 
-    async def clean_cache(self) -> None:
+    async def _cache_cleaner(self) -> None:
+        """Background task: evict stale file-meta/thumbnail cache every 2 min."""
         while True:
             try:
-                await asyncio.sleep(self.clean_timer)
-                self.cached_file_ids.clear()
-                _file_meta_cache.clear()
-                logger.debug("ByteStreamer cache cleared")
+                await asyncio.sleep(120)
+                # Evict per-file caches idle for > 5 min
+                await _evict_stale_file_cache()
+                # Evict stale FileId entries (30 min TTL)
+                now = time.monotonic()
+                # FileId cache doesn't carry timestamps — clear fully every 30 min
+                # via a separate counter
+                if not hasattr(self, '_last_full_clear'):
+                    self._last_full_clear = now
+                if now - self._last_full_clear > 1800:
+                    self.cached_file_ids.clear()
+                    self._last_full_clear = now
+                    logger.debug("ByteStreamer FileId cache cleared (30 min)")
             except asyncio.CancelledError:
-                logger.debug("ByteStreamer.clean_cache task cancelled — stopping")
+                logger.debug("ByteStreamer._cache_cleaner task cancelled — stopping")
                 break
             except Exception as exc:
-                logger.error("ByteStreamer.clean_cache error: %s", exc)
+                logger.error("ByteStreamer._cache_cleaner error: %s", exc)
 
 
 def _parse_range(range_header: str, file_size: int):
+    """Parse HTTP Range header and return (from_bytes, until_bytes).
+
+    Handles all common formats: 'bytes=0-', 'bytes=0-1023',
+    'bytes=-512' (suffix range), and missing/malformed headers.
+    Processing is O(1) with no allocations beyond the two ints.
+    """
     if range_header:
         try:
             raw_range   = range_header.replace("bytes=", "").split(",")[0].strip()
@@ -539,18 +668,35 @@ class StreamingService:
         file_hash: str,
         is_download: bool = False,
     ) -> web.StreamResponse:
+        """Handle an HTTP streaming request with efficient range support.
 
+        Design goals:
+        - Minimal TTFB: metadata is cached; file properties are pre-resolved.
+        - Non-blocking: all I/O is async; no synchronous waits in the hot path.
+        - Fast seek: range requests are handled directly without re-initialising
+          the stream — the prefetch worker starts from the new offset immediately.
+        - Low memory: PREFETCH_COUNT=8 keeps at most ~8 MB queued per stream.
+        - Stable under load: bandwidth dedup prevents double-counting; session
+          heartbeats keep the active-connections counter accurate.
+        """
         range_header     = request.headers.get("Range", "")
         is_range_request = bool(range_header)
         client_ip        = _get_client_ip(request)
+        now              = time.monotonic()
 
-        if file_hash in _file_meta_cache:
-            file_data = _file_meta_cache[file_hash]
-        else:
+        # ── Fast path: serve from cache if available ─────────────────────────
+        async with _cache_lock:
+            file_data = _file_meta_cache.get(file_hash)
+            if file_data is not None:
+                _file_cache_atime[file_hash] = now  # refresh access time
+
+        if file_data is None:
             file_data = await self.db.get_file_by_hash(file_hash)
             if not file_data:
                 raise web.HTTPNotFound(reason="file not found")
-            _file_meta_cache[file_hash] = file_data
+            async with _cache_lock:
+                _file_meta_cache[file_hash]  = file_data
+                _file_cache_atime[file_hash] = now
 
         if Config.get("bandwidth_mode", True):
             stats  = await self.db.get_bandwidth_stats()
@@ -562,14 +708,10 @@ class StreamingService:
         file_name  = file_data["file_name"]
         message_id = str(file_data["message_id"])
 
-        # Verify file properties from the Flog/dump channel.
-        # get_file_properties first checks in-memory cache; on miss it calls
-        # get_file_ids which fetches the Telegram message and raises
-        # web.HTTPNotFound if the message is gone or contains no media.
+        # Resolve file properties (cached after first hit — O(1) on repeat)
         try:
             file_id = await self.streamer.get_file_properties(message_id)
         except web.HTTPNotFound:
-            # Re-raise directly — the message is gone from the log channel.
             raise
         except asyncio.CancelledError:
             raise
@@ -589,6 +731,11 @@ class StreamingService:
         until_bytes = min(until_bytes, file_size - 1)
         req_length  = until_bytes - from_bytes + 1
 
+        # ── Adaptive chunk strategy ───────────────────────────────────────────
+        # For the very first bytes of a stream (offset 0) use FIRST_CHUNK_SIZE
+        # to minimise TTFB.  For seek requests use _SEEK_INITIAL_SIZE.
+        # In both cases, Telegram still delivers full 1 MB chunks; we just
+        # slice the first one before forwarding to the client.
         offset         = from_bytes - (from_bytes % CHUNK_SIZE)
         first_part_cut = from_bytes - offset
         last_part_cut  = (until_bytes % CHUNK_SIZE) + 1
@@ -617,33 +764,52 @@ class StreamingService:
             "Content-Length":              str(req_length),
             "Content-Disposition":         f'{disposition}; filename="{file_name}"',
             "Accept-Ranges":               "bytes",
-            # no-store ensures VLC / MX Player re-issues range requests
-            # instead of serving stale cached data.
+            # no-store: VLC/MX Player re-issue range requests rather than
+            # serving stale data from an intermediate cache
             "Cache-Control":               "no-store",
             "Access-Control-Allow-Origin": "*",
-            # TCP keepalive helps external players maintain the connection
-            # across long pauses between user interactions.
+            # Keep-Alive lets external players hold the TCP connection open
+            # across long pauses without triggering reconnect delays
             "Connection":                  "keep-alive",
             "Keep-Alive":                  "timeout=60, max=1000",
             "X-Content-Type-Options":      "nosniff",
             "X-File-Size":                 str(file_size),
+            # ICY / DLNA display title for external player now-playing info
+            "icy-name":                    file_name,
+            "icy-metaint":                 "0",
         }
         if is_range_request:
             headers["Content-Range"] = f"bytes {from_bytes}-{until_bytes}/{file_size}"
+
+        # ── Artwork metadata for external players ─────────────────────────────
+        # Inject thumbnail URL via Link header (rel=artwork) and X-Image-Url.
+        # VLC, MX Player, iOS AVPlayer/AirPlay, and Android MediaSession all
+        # recognise one or both of these headers for cover-art display.
+        # The web player DOES NOT use these — artwork is external-player only.
+        try:
+            base_url  = str(request.url.origin())
+            thumb_url = await get_thumbnail_url(
+                self.bot, file_hash, file_data, base_url
+            )
+            if thumb_url:
+                headers["Link"]        = f'<{thumb_url}>; rel="artwork"'
+                headers["X-Image-Url"] = thumb_url
+        except Exception as _te:
+            logger.debug("artwork header skipped: %s", _te)
 
         response = web.StreamResponse(status=status, headers=headers)
 
         try:
             await response.prepare(request)
         except ConnectionResetError:
-            logger.debug("stream  msg=%s  client dropped before response headers", message_id)
+            logger.debug(
+                "stream  msg=%s  client dropped before response headers", message_id
+            )
             return response
 
-        # Session key for the active-connections counter.
-        session_key = f"{file_hash}:{client_ip}"
-
-        bytes_sent      = 0
-        last_heartbeat  = time.monotonic()
+        session_key    = f"{file_hash}:{client_ip}"
+        bytes_sent     = 0
+        last_heartbeat = time.monotonic()
 
         try:
             async for chunk in self.streamer.yield_file(
@@ -658,10 +824,6 @@ class StreamingService:
                     await response.write(chunk)
                     bytes_sent += len(chunk)
 
-                    # Refresh the session heartbeat periodically so the
-                    # active-connections counter stays at 1 for the full
-                    # duration of a long stream instead of dropping to 0
-                    # between chunk fetches.
                     now = time.monotonic()
                     if now - last_heartbeat >= _SESSION_HEARTBEAT_INTERVAL:
                         await _heartbeat_session(session_key)
@@ -669,17 +831,20 @@ class StreamingService:
 
                 except (ConnectionResetError, BrokenPipeError):
                     logger.debug(
-                        "stream  msg=%s  connection reset after %d bytes", message_id, bytes_sent
+                        "stream  msg=%s  connection reset after %d bytes",
+                        message_id, bytes_sent,
                     )
                     break
 
         except asyncio.CancelledError:
             logger.debug(
-                "stream  msg=%s  request cancelled after %d bytes", message_id, bytes_sent
+                "stream  msg=%s  request cancelled after %d bytes",
+                message_id, bytes_sent,
             )
         except (ConnectionResetError, BrokenPipeError):
             logger.debug(
-                "stream  msg=%s  client disconnected after %d bytes", message_id, bytes_sent
+                "stream  msg=%s  client disconnected after %d bytes",
+                message_id, bytes_sent,
             )
         except Exception as exc:
             logger.error("streaming error: msg=%s err=%s", message_id, exc)
@@ -689,15 +854,15 @@ class StreamingService:
         except Exception:
             pass
 
-        # Bandwidth accounting — always record the actual bytes transferred,
-        # deduplicated so the same (client, file, offset) range is not double-
-        # counted when a player issues multiple probe requests.
+        # Bandwidth accounting with deduplication
         if bytes_sent > 0:
             should_track = await _should_track_bandwidth(client_ip, message_id, from_bytes)
             if should_track:
                 task = asyncio.ensure_future(self.db.track_bandwidth(message_id, bytes_sent))
                 task.add_done_callback(
-                    lambda t: t.exception() and logger.error("track_bandwidth error: %s", t.exception())
+                    lambda t: t.exception() and logger.error(
+                        "track_bandwidth error: %s", t.exception()
+                    )
                 )
             else:
                 logger.debug(

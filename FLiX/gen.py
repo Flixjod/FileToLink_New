@@ -569,13 +569,14 @@ async def cb_owner_revoke_confirm(client: Client, callback: CallbackQuery):
     safe_name = escape_markdown(file_data["file_name"])
     await callback.message.edit_text(
         f"⚠️ **{small_caps('confirm revoke')}**\n\n"
-        f"ᴀʀᴇ ʏᴏᴜ ꜱᴜʀᴇ ʏᴏᴜ ᴡᴀɴᴛ ᴛᴏ ᴘᴇʀᴍᴀɴᴇɴᴛʟʏ ʀᴇᴠᴏᴋᴇ:\n\n"
+        f"🚫 ᴀʀᴇ ʏᴏᴜ ꜱᴜʀᴇ ʏᴏᴜ ᴡᴀɴᴛ ᴛᴏ **ᴘᴇʀᴍᴀɴᴇɴᴛʟʏ ʀᴇᴠᴏᴋᴇ ᴀᴄᴄᴇꜱꜱ** ᴛᴏ ᴛʜɪꜱ ꜰɪʟᴇ?\n\n"
         f"📂 **{small_caps('file')}:** `{safe_name}`\n\n"
-        "ᴀʟʟ ʟɪɴᴋꜱ ᴡɪʟʟ ʙᴇᴄᴏᴍᴇ ɪɴᴠᴀʟɪᴅ.",
+        "⚠️ **ᴛʜɪꜱ ᴀᴄᴛɪᴏɴ ᴄᴀɴɴᴏᴛ ʙᴇ ᴜɴᴅᴏɴᴇ.**\n"
+        "ᴀʟʟ ꜱᴛʀᴇᴀᴍ ᴀɴᴅ ᴅᴏᴡɴʟᴏᴀᴅ ʟɪɴᴋꜱ ꜰᴏʀ ᴛʜɪꜱ ꜰɪʟᴇ ᴡɪʟʟ ʙᴇᴄᴏᴍᴇ ɪɴᴠᴀʟɪᴅ ɪᴍᴍᴇᴅɪᴀᴛᴇʟʏ.",
         reply_markup=InlineKeyboardMarkup([
             [
-                InlineKeyboardButton(f"✅ {small_caps('yes')}", callback_data=f"ownrevoke_yes_{file_hash}_{target_id}"),
-                InlineKeyboardButton(f"❌ {small_caps('no')}",  callback_data=f"ownrevoke_no_{target_id}"),
+                InlineKeyboardButton(f"✅ {small_caps('yes, revoke')}", callback_data=f"ownrevoke_yes_{file_hash}_{target_id}"),
+                InlineKeyboardButton(f"❌ {small_caps('cancel')}",  callback_data=f"ownrevoke_no_{target_id}"),
             ]
         ]),
     )
@@ -674,13 +675,14 @@ async def cb_revoke_confirm(client: Client, callback: CallbackQuery):
     safe_name = escape_markdown(file_data["file_name"])
     await callback.message.edit_text(
         f"⚠️ **{small_caps('confirm revoke')}**\n\n"
-        f"ᴀʀᴇ ʏᴏᴜ ꜱᴜʀᴇ ʏᴏᴜ ᴡᴀɴᴛ ᴛᴏ ᴘᴇʀᴍᴀɴᴇɴᴛʟʏ ʀᴇᴠᴏᴋᴇ:\n\n"
+        f"🚫 ᴀʀᴇ ʏᴏᴜ ꜱᴜʀᴇ ʏᴏᴜ ᴡᴀɴᴛ ᴛᴏ **ᴘᴇʀᴍᴀɴᴇɴᴛʟʏ ʀᴇᴠᴏᴋᴇ ᴀᴄᴄᴇꜱꜱ** ᴛᴏ ᴛʜɪꜱ ꜰɪʟᴇ?\n\n"
         f"📂 **{small_caps('file')}:** `{safe_name}`\n\n"
-        "ᴀʟʟ ʟɪɴᴋꜱ ᴡɪʟʟ ʙᴇᴄᴏᴍᴇ ɪɴᴠᴀʟɪᴅ.",
+        "⚠️ **ᴛʜɪꜱ ᴀᴄᴛɪᴏɴ ᴄᴀɴɴᴏᴛ ʙᴇ ᴜɴᴅᴏɴᴇ.**\n"
+        "ᴀʟʟ ꜱᴛʀᴇᴀᴍ ᴀɴᴅ ᴅᴏᴡɴʟᴏᴀᴅ ʟɪɴᴋꜱ ꜰᴏʀ ᴛʜɪꜱ ꜰɪʟᴇ ᴡɪʟʟ ʙᴇᴄᴏᴍᴇ ɪɴᴠᴀʟɪᴅ ɪᴍᴍᴇᴅɪᴀᴛᴇʟʏ.",
         reply_markup=InlineKeyboardMarkup([
             [
-                InlineKeyboardButton(f"✅ {small_caps('yes')}", callback_data=f"revoke_yes_{file_hash}_{back_page}"),
-                InlineKeyboardButton(f"❌ {small_caps('no')}",  callback_data=f"revoke_no_{back_page}"),
+                InlineKeyboardButton(f"✅ {small_caps('yes, revoke')}", callback_data=f"revoke_yes_{file_hash}_{back_page}"),
+                InlineKeyboardButton(f"❌ {small_caps('cancel')}",  callback_data=f"revoke_no_{back_page}"),
             ]
         ]),
     )

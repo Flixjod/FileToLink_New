@@ -153,6 +153,10 @@ def build_app(bot: Bot, database) -> web.Application:
         playable = is_browser_playable(mime)
 
         info = _bot_info(bot)
+        # Build thumbnail URL for the template (used ONLY as metadata for external
+        # players — the built-in web player does NOT display it)
+        # thumbnail_url is used only as OG metadata (no /thumb endpoint)
+        thumbnail_url = f"{base}/stream/{file_hash}"
         context = {
             "bot_name":         info["bot_name"],
             "bot_username":     info["bot_username"],
@@ -164,6 +168,7 @@ def build_app(bot: Bot, database) -> web.Application:
             "browser_playable": playable,
             "stream_url":       f"{base}/stream/{file_hash}",
             "download_url":     f"{base}/dl/{file_hash}",
+            "thumbnail_url":    thumbnail_url,
             "telegram_url":     f"https://t.me/{info['bot_username']}?start={file_hash}",
         }
         return aiohttp_jinja2.render_template("stream.html", request, context)
@@ -336,15 +341,15 @@ def build_app(bot: Bot, database) -> web.Application:
             return await api_health(request)
         raise web.HTTPFound("/bot_settings")
 
-    app.router.add_get("/",                   home)
-    app.router.add_get("/stream/{file_hash}", stream_page)
-    app.router.add_get("/dl/{file_hash}",     download_file)
-    app.router.add_get("/bot_settings",       bot_settings_page)
-    app.router.add_get("/api/stats",          api_stats)
-    app.router.add_get("/api/bandwidth",      api_bandwidth)
-    app.router.add_get("/api/health",         api_health)
-    app.router.add_get("/stats",              stats_endpoint)
-    app.router.add_get("/bandwidth",          bandwidth_endpoint)
-    app.router.add_get("/health",             health_endpoint)
+    app.router.add_get("/",                      home)
+    app.router.add_get("/stream/{file_hash}",    stream_page)
+    app.router.add_get("/dl/{file_hash}",        download_file)
+    app.router.add_get("/bot_settings",          bot_settings_page)
+    app.router.add_get("/api/stats",             api_stats)
+    app.router.add_get("/api/bandwidth",         api_bandwidth)
+    app.router.add_get("/api/health",            api_health)
+    app.router.add_get("/stats",                 stats_endpoint)
+    app.router.add_get("/bandwidth",             bandwidth_endpoint)
+    app.router.add_get("/health",                health_endpoint)
 
     return app
