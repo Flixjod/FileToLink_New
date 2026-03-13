@@ -19,6 +19,10 @@ from helper.stream import (
     _unregister_session,
     _get_client_ip,
     _mime_for_filename,
+    _check_bandwidth_cached,
+    _file_meta_cache,
+    _file_cache_atime,
+    _cache_lock,
     is_browser_playable,
     MIME_TYPE_MAP,
 )
@@ -111,29 +115,31 @@ def build_app(bot: Bot, database) -> web.Application:
         accept    = request.headers.get("Accept", "")
         range_h   = request.headers.get("Range", "")
 
+        # ── Fast path: any Range request or non-HTML Accept goes straight to
+        # the streaming service.  Zero extra I/O before the 206 headers.
         if range_h or "text/html" not in accept:
             return await _tracked_stream(request, file_hash, is_download=False)
 
-        file_data = await database.get_file_by_hash(file_hash)
-        if not file_data:
-            raise web.HTTPNotFound(reason="File not found")
+        # ── HTML page path: resolve metadata for the player embed page.
+        # Try L1 in-process cache first to skip the DB round-trip.
+        now = time.monotonic()
+        async with _cache_lock:
+            file_data = _file_meta_cache.get(file_hash)
+            if file_data is not None:
+                _file_cache_atime[file_hash] = now
 
-        # Also verify the file exists in the Flog/dump channel so we can
-        # surface a clean 404 instead of a player error mid-stream.
-        try:
-            from helper.stream import get_file_ids
-            await get_file_ids(bot, str(file_data["message_id"]))
-        except web.HTTPNotFound:
-            raise
-        except Exception as exc:
-            logger.warning(
-                "stream_page Flog verification failed: hash=%s err=%s", file_hash, exc
-            )
-            raise web.HTTPNotFound(reason="File no longer available on Telegram")
+        if file_data is None:
+            file_data = await database.get_file_by_hash(file_hash)
+            if not file_data:
+                raise web.HTTPNotFound(reason="File not found")
+            async with _cache_lock:
+                _file_meta_cache[file_hash]  = file_data
+                _file_cache_atime[file_hash] = now
 
-        allowed, _ = await check_bandwidth_limit(database)
-        if not allowed:
-            raise web.HTTPServiceUnavailable(reason="bandwidth limit exceeded")
+        # Bandwidth check via cached counter — never blocks on DB here.
+        if Config.get("bandwidth_mode", True):
+            if not await _check_bandwidth_cached(database):
+                raise web.HTTPServiceUnavailable(reason="bandwidth limit exceeded")
 
         base      = str(request.url.origin())
         file_type = (
