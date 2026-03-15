@@ -54,7 +54,7 @@ def show_nav(page: str, user_mention: str, bot_name: str, bot_username: str):
 async def start_command(client: Client, message: Message):
     user = message.from_user
     user_id = user.id
-    _me = await client.get_me()
+    BOT_INFO = await Config.BOT_INFO
 
     # 1. Register User & Log to Admin Chat
     is_new = await db.register_user_on_start({
@@ -163,7 +163,7 @@ async def start_command(client: Client, message: Message):
 
 @Client.on_message(filters.command("help") & filters.private, group=1)
 async def help_command(client: Client, message: Message):
-    _me = await client.get_me()
+    BOT_INFO = await Config.BOT_INFO
     text, buttons = show_nav("help", message.from_user.mention, _me.first_name, _me.username)
     await client.send_message(
         chat_id=message.chat.id,
@@ -174,7 +174,7 @@ async def help_command(client: Client, message: Message):
 
 @Client.on_message(filters.command("about") & filters.private, group=1)
 async def about_command(client: Client, message: Message):
-    _me = await client.get_me()
+    BOT_INFO = await Config.BOT_INFO
     text, buttons = show_nav("about", message.from_user.mention, _me.first_name, _me.username)
     await client.send_message(
         chat_id=message.chat.id,
@@ -216,7 +216,7 @@ async def cb_handler(client: Client, query: CallbackQuery):
         await query.message.delete()
         return await query.answer("ᴄʟᴏꜱᴇᴅ")
 
-    _me = await client.get_me()
+    BOT_INFO = await Config.BOT_INFO
     text, markup = show_nav(query.data, query.from_user.mention, _me.first_name, _me.username)
     
     try:
