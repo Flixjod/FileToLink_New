@@ -53,12 +53,18 @@ async def show_panel(client: Client, source, panel_type: str):
         bw_used   = bw_stats["total_bandwidth"]
         bw_today  = bw_stats["today_bandwidth"]
         bw_pct    = (bw_used / max_bw * 100) if max_bw else 0
+        cycle_start = bw_stats.get("cycle_start_date", "—")
+        cycle_days  = bw_stats.get("cycle_reset_days", 30)
+        days_left   = bw_stats.get("cycle_days_left",  30)
         text = (
             f"💠 **{small_caps('bandwidth settings')}** 💠\n\n"
-            f"⚡ **{small_caps('mode')}**       : {'🟢 ᴀᴄᴛɪᴠᴇ' if bw_toggle else '🔴 ɪɴᴀᴄᴛɪᴠᴇ'}\n"
-            f"📊 **{small_caps('limit')}**      : `{format_size(max_bw)}`\n"
-            f"📤 **{small_caps('used (total)')}**: `{format_size(bw_used)}` ({bw_pct:.1f}%)\n"
-            f"📅 **{small_caps('used today')}** : `{format_size(bw_today)}`"
+            f"⚡ **{small_caps('mode')}**            : {'🟢 ᴀᴄᴛɪᴠᴇ' if bw_toggle else '🔴 ɪɴᴀᴄᴛɪᴠᴇ'}\n"
+            f"📊 **{small_caps('limit')}**           : `{format_size(max_bw)}`\n"
+            f"📤 **{small_caps('used (total)')}**    : `{format_size(bw_used)}` ({bw_pct:.1f}%)\n"
+            f"📅 **{small_caps('used today')}**      : `{format_size(bw_today)}`\n\n"
+            f"🗓️ **{small_caps('cycle started')}**   : `{cycle_start}`\n"
+            f"🔄 **{small_caps('auto reset')}**      : ᴀꜰᴛᴇʀ `{cycle_days}` ᴅᴀʏꜱ\n"
+            f"⏳ **{small_caps('next reset in')}**   : `{days_left}` ᴅᴀʏꜱ"
         )
         buttons = InlineKeyboardMarkup([
             [InlineKeyboardButton("⚡ ᴛᴏɢɢʟᴇ",         callback_data="toggle_bandwidth")],

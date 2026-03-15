@@ -1,9 +1,11 @@
 from motor.motor_asyncio import AsyncIOMotorClient
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 import logging
 
 logger = logging.getLogger(__name__)
+
+BANDWIDTH_CYCLE_DAYS = 30
 
 
 class Database:
@@ -173,10 +175,87 @@ class Database:
             logger.error("track bandwidth error: %s", e)
             return False
 
+    # ── Bandwidth Cycle (30-day auto-reset) ─────────────────────────────────
+
+    async def get_bandwidth_cycle(self) -> Dict:
+        """Return the current bandwidth cycle info, creating one if missing."""
+        try:
+            doc = await self.config.find_one({"key": "bandwidth_cycle"})
+            if doc:
+                return doc
+            # Bootstrap a new cycle starting now
+            now = datetime.utcnow()
+            new_doc = {
+                "key":        "bandwidth_cycle",
+                "start_date": now,
+                "reset_at":   now + timedelta(days=BANDWIDTH_CYCLE_DAYS),
+            }
+            await self.config.update_one(
+                {"key": "bandwidth_cycle"},
+                {"$set": new_doc},
+                upsert=True,
+            )
+            return new_doc
+        except Exception as e:
+            logger.error("get_bandwidth_cycle error: %s", e)
+            now = datetime.utcnow()
+            return {
+                "start_date": now,
+                "reset_at":   now + timedelta(days=BANDWIDTH_CYCLE_DAYS),
+            }
+
+    async def check_and_auto_reset_bandwidth(self) -> bool:
+        """Auto-reset bandwidth if 30-day cycle has completed. Returns True if reset occurred."""
+        try:
+            cycle = await self.get_bandwidth_cycle()
+            reset_at = cycle.get("reset_at")
+            if reset_at is None:
+                return False
+
+            # Normalise to naive UTC for comparison
+            now = datetime.utcnow()
+            if hasattr(reset_at, "tzinfo") and reset_at.tzinfo is not None:
+                reset_at = reset_at.replace(tzinfo=None)
+
+            if now >= reset_at:
+                # Reset bandwidth data
+                await self.bandwidth.delete_many({})
+                await self.files.update_many({}, {"$set": {"bandwidth_used": 0}})
+                # Start a new cycle
+                new_start  = now
+                new_reset  = now + timedelta(days=BANDWIDTH_CYCLE_DAYS)
+                await self.config.update_one(
+                    {"key": "bandwidth_cycle"},
+                    {"$set": {
+                        "key":        "bandwidth_cycle",
+                        "start_date": new_start,
+                        "reset_at":   new_reset,
+                    }},
+                    upsert=True,
+                )
+                logger.info("✅ Bandwidth auto-reset: new cycle started %s → %s", new_start.date(), new_reset.date())
+                return True
+            return False
+        except Exception as e:
+            logger.error("check_and_auto_reset_bandwidth error: %s", e)
+            return False
+
     async def reset_bandwidth(self) -> bool:
+        """Manual bandwidth reset — also starts a fresh 30-day cycle."""
         try:
             await self.bandwidth.delete_many({})
             await self.files.update_many({}, {"$set": {"bandwidth_used": 0}})
+            # Restart the 30-day cycle from now
+            now = datetime.utcnow()
+            await self.config.update_one(
+                {"key": "bandwidth_cycle"},
+                {"$set": {
+                    "key":        "bandwidth_cycle",
+                    "start_date": now,
+                    "reset_at":   now + timedelta(days=BANDWIDTH_CYCLE_DAYS),
+                }},
+                upsert=True,
+            )
             return True
         except Exception as e:
             logger.error("reset bandwidth error: %s", e)
@@ -224,16 +303,75 @@ class Database:
 
     async def get_bandwidth_stats(self) -> Dict:
         try:
+            # Auto-reset if cycle expired before reading stats
+            await self.check_and_auto_reset_bandwidth()
+
             total       = await self.get_total_bandwidth()
             today       = datetime.utcnow().date().isoformat()
             today_stats = await self.bandwidth.find_one({"date": today})
+
+            # Cycle info
+            cycle      = await self.get_bandwidth_cycle()
+            start_date = cycle.get("start_date", datetime.utcnow())
+            reset_at   = cycle.get("reset_at",   datetime.utcnow() + timedelta(days=BANDWIDTH_CYCLE_DAYS))
+
+            # Normalise
+            now = datetime.utcnow()
+            if hasattr(start_date, "tzinfo") and start_date.tzinfo is not None:
+                start_date = start_date.replace(tzinfo=None)
+            if hasattr(reset_at, "tzinfo") and reset_at.tzinfo is not None:
+                reset_at = reset_at.replace(tzinfo=None)
+
+            days_remaining = max(0, (reset_at - now).days)
+
             return {
-                "total_bandwidth": total,
-                "today_bandwidth": today_stats.get("total_bytes", 0) if today_stats else 0,
+                "total_bandwidth":  total,
+                "today_bandwidth":  today_stats.get("total_bytes", 0) if today_stats else 0,
+                "cycle_start_date": start_date.strftime("%d %b %Y"),
+                "cycle_reset_days": BANDWIDTH_CYCLE_DAYS,
+                "cycle_days_left":  days_remaining,
             }
         except Exception as e:
             logger.error("get bandwidth stats error: %s", e)
-            return {"total_bandwidth": 0, "today_bandwidth": 0}
+            return {
+                "total_bandwidth":  0,
+                "today_bandwidth":  0,
+                "cycle_start_date": "—",
+                "cycle_reset_days": BANDWIDTH_CYCLE_DAYS,
+                "cycle_days_left":  BANDWIDTH_CYCLE_DAYS,
+            }
+
+    # ── Bandwidth Analytics (date-range queries) ─────────────────────────────
+
+    async def get_bandwidth_for_range(self, from_date: datetime, to_date: datetime) -> int:
+        """Return total bytes transferred between from_date and to_date (inclusive)."""
+        try:
+            from_str = from_date.date().isoformat()
+            to_str   = to_date.date().isoformat()
+            pipeline = [
+                {"$match": {"date": {"$gte": from_str, "$lte": to_str}}},
+                {"$group": {"_id": None, "total": {"$sum": "$total_bytes"}}},
+            ]
+            result = await self.bandwidth.aggregate(pipeline).to_list(length=1)
+            return result[0]["total"] if result else 0
+        except Exception as e:
+            logger.error("get_bandwidth_for_range error: %s", e)
+            return 0
+
+    async def get_bandwidth_daily_for_range(self, from_date: datetime, to_date: datetime) -> List[Dict]:
+        """Return per-day bandwidth list [{date, bytes}] sorted ascending."""
+        try:
+            from_str = from_date.date().isoformat()
+            to_str   = to_date.date().isoformat()
+            cursor = self.bandwidth.find(
+                {"date": {"$gte": from_str, "$lte": to_str}},
+                {"_id": 0, "date": 1, "total_bytes": 1},
+            ).sort("date", 1)
+            rows = await cursor.to_list(length=None)
+            return [{"date": r["date"], "bytes": r.get("total_bytes", 0)} for r in rows]
+        except Exception as e:
+            logger.error("get_bandwidth_daily_for_range error: %s", e)
+            return []
 
     async def get_stats(self) -> Dict:
         try:

@@ -587,25 +587,23 @@
       padding: 8px 12px 10px;
       background: linear-gradient(transparent, rgba(0,0,0,.88));
       opacity: 0;
-      transition: opacity .25s ease;
+      transition: opacity .3s ease;
       z-index: 15;
       border-radius: 0 0 24px 24px;
-      pointer-events: auto;
+      pointer-events: none;
     }
-    .video-wrapper:hover .ctrl-bar,
-    .video-wrapper.ctrl-visible .ctrl-bar { opacity: 1; }
+    /* Show controls when JS adds .ctrl-visible or on desktop hover */
+    .video-wrapper.ctrl-visible .ctrl-bar { opacity: 1; pointer-events: auto; }
+    @media (hover: hover) {
+      .video-wrapper:hover .ctrl-bar { opacity: 1; pointer-events: auto; }
+    }
     .video-wrapper:fullscreen .ctrl-bar,
     .video-wrapper:-webkit-full-screen .ctrl-bar { border-radius: 0; }
-
-    /* Fullscreen auto-hide */
-    .video-wrapper:fullscreen:not(:hover) .ctrl-bar,
-    .video-wrapper:-webkit-full-screen:not(:hover) .ctrl-bar,
-    .video-wrapper:fullscreen:not(.ctrl-visible) .ctrl-bar,
-    .video-wrapper:-webkit-full-screen:not(.ctrl-visible) .ctrl-bar { opacity: 0; }
-    .video-wrapper:fullscreen:hover .ctrl-bar,
-    .video-wrapper:-webkit-full-screen:hover .ctrl-bar,
+    /* Fullscreen: controls only show when ctrl-visible (touch-friendly) */
+    .video-wrapper:fullscreen .ctrl-bar,
+    .video-wrapper:-webkit-full-screen .ctrl-bar { opacity: 0; pointer-events: none; }
     .video-wrapper:fullscreen.ctrl-visible .ctrl-bar,
-    .video-wrapper:-webkit-full-screen.ctrl-visible .ctrl-bar { opacity: 1; }
+    .video-wrapper:-webkit-full-screen.ctrl-visible .ctrl-bar { opacity: 1; pointer-events: auto; }
 
     /* Individual control button */
     .ctrl-btn {
@@ -786,6 +784,43 @@
       box-shadow: 0 10px 28px rgba(102,126,234,.6);
     }
     .pip-return-btn:active { transform: scale(.97); }
+
+
+    /* ── Settings Trigger (placed outside video-wrapper, inside player-card) ── */
+    .settings-trigger-wrap {
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+      padding: 8px 14px 4px;
+      position: relative;
+      z-index: 200;
+    }
+    .settings-trigger-btn {
+      width: 38px; height: 38px;
+      border-radius: 10px;
+      background: var(--btn-ghost-bg);
+      border: 1px solid var(--btn-ghost-border);
+      color: var(--btn-ghost-color);
+      font-size: .88rem;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: all .2s ease;
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: transparent;
+      pointer-events: auto;
+    }
+    .settings-trigger-btn:hover {
+      background: rgba(102,126,234,.18);
+      color: #667eea;
+      border-color: rgba(102,126,234,.4);
+      transform: rotate(30deg);
+    }
+    .settings-trigger-btn.active {
+      background: rgba(102,126,234,.22);
+      color: #a78bfa;
+      border-color: #667eea;
+      transform: rotate(60deg);
+    }
 
     /* ── UI Layer: when settings open, intercept all non-settings clicks ── */
     .settings-layer {
@@ -1514,6 +1549,130 @@
   <!-- Mobile settings overlay (backdrop — mobile only, BEHIND popup) -->
   <div class="settings-overlay" id="settings-overlay" onclick="closeSettings()"></div>
 
+  <!-- Settings backdrop layer (intercepts clicks when menu open) -->
+  <!-- UI layer: blocks all non-settings interactions when menu is open (position:fixed in CSS) -->
+          <div class="settings-layer" id="settings-layer" onclick="closeSettings()"></div>
+
+  <!-- Settings Popup panel (position:fixed — works in any orientation) -->
+  <!-- ── Settings popup (position:fixed → escapes stacking context, works on mobile) ── -->
+  <div class="settings-popup" id="settings-popup" role="dialog" aria-label="Player Settings">
+    <div class="settings-drag-handle"></div>
+
+    <!-- Panels container (clipped for slide transitions) -->
+    <div class="settings-panels" id="settings-panels">
+
+      <!-- ── MAIN PANEL ──────────────────────────────────────── -->
+      <div class="settings-panel panel-active" id="panel-main">
+        <div class="settings-header">
+          <span class="settings-header-title">
+    <i class="fa-solid fa-sliders"></i> Settings
+          </span>
+          <button class="settings-close-btn" onclick="closeSettings()" aria-label="Close settings">
+    <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+        <div class="settings-menu-list">
+
+          <!-- Speed -->
+          <div class="settings-menu-row" id="row-speed" onclick="openSubPanel('speed')" role="button" tabindex="0">
+    <div class="settings-menu-icon"><i class="fa-solid fa-gauge-high"></i></div>
+    <span class="settings-menu-label">Speed</span>
+    <span class="settings-menu-value" id="speed-main-val">Normal</span>
+    <i class="fa-solid fa-chevron-right settings-menu-arrow"></i>
+          </div>
+
+          <div class="settings-menu-divider"></div>
+
+          <!-- Audio Track -->
+          <div class="settings-menu-row" id="row-audio" onclick="openSubPanel('audio')" role="button" tabindex="0">
+    <div class="settings-menu-icon"><i class="fa-solid fa-volume-high"></i></div>
+    <span class="settings-menu-label">Audio Track</span>
+    <span class="settings-menu-value" id="audio-main-val">Default</span>
+    <i class="fa-solid fa-chevron-right settings-menu-arrow"></i>
+          </div>
+
+          <div class="settings-menu-divider"></div>
+
+          <!-- Subtitles -->
+          <div class="settings-menu-row" id="row-subs" onclick="openSubPanel('subs')" role="button" tabindex="0">
+    <div class="settings-menu-icon"><i class="fa-solid fa-closed-captioning"></i></div>
+    <span class="settings-menu-label">Subtitles</span>
+    <span class="settings-menu-value" id="subs-main-val">Off</span>
+    <i class="fa-solid fa-chevron-right settings-menu-arrow"></i>
+          </div>
+
+        </div>
+      </div><!-- /panel-main -->
+
+      <!-- ── SPEED SUBMENU ─────────────────────────────────── -->
+      <div class="settings-panel panel-hidden-right" id="panel-speed">
+        <div class="settings-sub-header" onclick="closeSubPanel()" role="button" tabindex="0">
+          <button class="settings-back-btn" aria-label="Back"><i class="fa-solid fa-chevron-left"></i></button>
+          <span class="settings-sub-title">Playback Speed</span>
+          <button class="settings-close-btn" onclick="closeSettings()" aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div class="settings-sub-list" id="speed-sub-list" style="padding:10px 10px 4px;">
+          <!-- Horizontal speed grid row -->
+          <div class="speed-chips-row" id="speed-chips-row">
+    <button class="speed-chip-btn" data-speed="0.25" onclick="selectSpeedChip(this)">0.25×</button>
+    <button class="speed-chip-btn" data-speed="0.5" onclick="selectSpeedChip(this)">0.5×</button>
+    <button class="speed-chip-btn" data-speed="0.75" onclick="selectSpeedChip(this)">0.75×</button>
+    <button class="speed-chip-btn active" data-speed="1" onclick="selectSpeedChip(this)">1×</button>
+    <button class="speed-chip-btn" data-speed="1.25" onclick="selectSpeedChip(this)">1.25×</button>
+    <button class="speed-chip-btn" data-speed="1.5" onclick="selectSpeedChip(this)">1.5×</button>
+    <button class="speed-chip-btn" data-speed="1.75" onclick="selectSpeedChip(this)">1.75×</button>
+    <button class="speed-chip-btn" data-speed="2" onclick="selectSpeedChip(this)">2×</button>
+          </div>
+          <!-- Custom speed slider in second line -->
+          <div class="speed-custom-section">
+    <div class="speed-custom-title">
+      <span>Custom Speed</span>
+      <span class="custom-speed-val" id="custom-speed-val">1.0×</span>
+    </div>
+    <input type="range" class="custom-speed-slider" id="custom-speed-slider"
+           min="0.1" max="4" step="0.05" value="1"
+           aria-label="Custom playback speed"
+           oninput="onCustomSpeedSlider(this.value)">
+    <div class="speed-range-hints">
+      <span>0.1×</span><span>1.0×</span><span>2.0×</span><span>3.0×</span><span>4.0×</span>
+    </div>
+          </div>
+        </div>
+      </div><!-- /panel-speed -->
+
+      <!-- ── AUDIO TRACK SUBMENU ───────────────────────────── -->
+      <div class="settings-panel panel-hidden-right" id="panel-audio">
+        <div class="settings-sub-header" onclick="closeSubPanel()" role="button" tabindex="0">
+          <button class="settings-back-btn" aria-label="Back"><i class="fa-solid fa-chevron-left"></i></button>
+          <span class="settings-sub-title">Audio Track</span>
+          <button class="settings-close-btn" onclick="closeSettings()" aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div class="settings-sub-list" id="audio-sub-list">
+          <div class="settings-sub-item sub-active" data-track-index="0">
+    <div class="sub-item-check"><i class="fa-solid fa-check"></i></div>
+    <span class="sub-item-label">Default</span>
+          </div>
+        </div>
+      </div><!-- /panel-audio -->
+
+      <!-- ── SUBTITLES SUBMENU ─────────────────────────────── -->
+      <div class="settings-panel panel-hidden-right" id="panel-subs">
+        <div class="settings-sub-header" onclick="closeSubPanel()" role="button" tabindex="0">
+          <button class="settings-back-btn" aria-label="Back"><i class="fa-solid fa-chevron-left"></i></button>
+          <span class="settings-sub-title">Subtitles / Captions</span>
+          <button class="settings-close-btn" onclick="closeSettings()" aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div class="settings-sub-list" id="subs-sub-list">
+          <div class="settings-sub-item sub-active" id="subs-off-item" onclick="selectSubtitle(null)">
+    <div class="sub-item-check"><i class="fa-solid fa-check"></i></div>
+    <span class="sub-item-label">Off</span>
+          </div>
+        </div>
+      </div><!-- /panel-subs -->
+
+    </div><!-- /settings-panels -->
+  </div><!-- /settings-popup -->
+
   <div class="container">
 
     <!-- ── Site Header ──────────────────────────────────────── -->
@@ -1607,127 +1766,6 @@
             </div>
           </div>
 
-          <!-- UI layer: blocks all non-settings interactions when menu is open (position:fixed in CSS) -->
-          <div class="settings-layer" id="settings-layer" onclick="closeSettings()"></div>
-
-          <!-- ── Settings popup (position:fixed → escapes stacking context, works on mobile) ── -->
-          <div class="settings-popup" id="settings-popup" role="dialog" aria-label="Player Settings">
-            <div class="settings-drag-handle"></div>
-
-            <!-- Panels container (clipped for slide transitions) -->
-            <div class="settings-panels" id="settings-panels">
-
-              <!-- ── MAIN PANEL ──────────────────────────────────────── -->
-              <div class="settings-panel panel-active" id="panel-main">
-                <div class="settings-header">
-                  <span class="settings-header-title">
-                    <i class="fa-solid fa-sliders"></i> Settings
-                  </span>
-                  <button class="settings-close-btn" onclick="closeSettings()" aria-label="Close settings">
-                    <i class="fa-solid fa-xmark"></i>
-                  </button>
-                </div>
-                <div class="settings-menu-list">
-
-                  <!-- Speed -->
-                  <div class="settings-menu-row" id="row-speed" onclick="openSubPanel('speed')" role="button" tabindex="0">
-                    <div class="settings-menu-icon"><i class="fa-solid fa-gauge-high"></i></div>
-                    <span class="settings-menu-label">Speed</span>
-                    <span class="settings-menu-value" id="speed-main-val">Normal</span>
-                    <i class="fa-solid fa-chevron-right settings-menu-arrow"></i>
-                  </div>
-
-                  <div class="settings-menu-divider"></div>
-
-                  <!-- Audio Track -->
-                  <div class="settings-menu-row" id="row-audio" onclick="openSubPanel('audio')" role="button" tabindex="0">
-                    <div class="settings-menu-icon"><i class="fa-solid fa-volume-high"></i></div>
-                    <span class="settings-menu-label">Audio Track</span>
-                    <span class="settings-menu-value" id="audio-main-val">Default</span>
-                    <i class="fa-solid fa-chevron-right settings-menu-arrow"></i>
-                  </div>
-
-                  <div class="settings-menu-divider"></div>
-
-                  <!-- Subtitles -->
-                  <div class="settings-menu-row" id="row-subs" onclick="openSubPanel('subs')" role="button" tabindex="0">
-                    <div class="settings-menu-icon"><i class="fa-solid fa-closed-captioning"></i></div>
-                    <span class="settings-menu-label">Subtitles</span>
-                    <span class="settings-menu-value" id="subs-main-val">Off</span>
-                    <i class="fa-solid fa-chevron-right settings-menu-arrow"></i>
-                  </div>
-
-                </div>
-              </div><!-- /panel-main -->
-
-              <!-- ── SPEED SUBMENU ─────────────────────────────────── -->
-              <div class="settings-panel panel-hidden-right" id="panel-speed">
-                <div class="settings-sub-header" onclick="closeSubPanel()" role="button" tabindex="0">
-                  <button class="settings-back-btn" aria-label="Back"><i class="fa-solid fa-chevron-left"></i></button>
-                  <span class="settings-sub-title">Playback Speed</span>
-                  <button class="settings-close-btn" onclick="closeSettings()" aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
-                </div>
-                <div class="settings-sub-list" id="speed-sub-list" style="padding:10px 10px 4px;">
-                  <!-- Horizontal speed grid row -->
-                  <div class="speed-chips-row" id="speed-chips-row">
-                    <button class="speed-chip-btn" data-speed="0.25" onclick="selectSpeedChip(this)">0.25×</button>
-                    <button class="speed-chip-btn" data-speed="0.5" onclick="selectSpeedChip(this)">0.5×</button>
-                    <button class="speed-chip-btn" data-speed="0.75" onclick="selectSpeedChip(this)">0.75×</button>
-                    <button class="speed-chip-btn active" data-speed="1" onclick="selectSpeedChip(this)">1×</button>
-                    <button class="speed-chip-btn" data-speed="1.25" onclick="selectSpeedChip(this)">1.25×</button>
-                    <button class="speed-chip-btn" data-speed="1.5" onclick="selectSpeedChip(this)">1.5×</button>
-                    <button class="speed-chip-btn" data-speed="1.75" onclick="selectSpeedChip(this)">1.75×</button>
-                    <button class="speed-chip-btn" data-speed="2" onclick="selectSpeedChip(this)">2×</button>
-                  </div>
-                  <!-- Custom speed slider in second line -->
-                  <div class="speed-custom-section">
-                    <div class="speed-custom-title">
-                      <span>Custom Speed</span>
-                      <span class="custom-speed-val" id="custom-speed-val">1.0×</span>
-                    </div>
-                    <input type="range" class="custom-speed-slider" id="custom-speed-slider"
-                           min="0.1" max="4" step="0.05" value="1"
-                           aria-label="Custom playback speed"
-                           oninput="onCustomSpeedSlider(this.value)">
-                    <div class="speed-range-hints">
-                      <span>0.1×</span><span>1.0×</span><span>2.0×</span><span>3.0×</span><span>4.0×</span>
-                    </div>
-                  </div>
-                </div>
-              </div><!-- /panel-speed -->
-
-              <!-- ── AUDIO TRACK SUBMENU ───────────────────────────── -->
-              <div class="settings-panel panel-hidden-right" id="panel-audio">
-                <div class="settings-sub-header" onclick="closeSubPanel()" role="button" tabindex="0">
-                  <button class="settings-back-btn" aria-label="Back"><i class="fa-solid fa-chevron-left"></i></button>
-                  <span class="settings-sub-title">Audio Track</span>
-                  <button class="settings-close-btn" onclick="closeSettings()" aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
-                </div>
-                <div class="settings-sub-list" id="audio-sub-list">
-                  <div class="settings-sub-item sub-active" data-track-index="0">
-                    <div class="sub-item-check"><i class="fa-solid fa-check"></i></div>
-                    <span class="sub-item-label">Default</span>
-                  </div>
-                </div>
-              </div><!-- /panel-audio -->
-
-              <!-- ── SUBTITLES SUBMENU ─────────────────────────────── -->
-              <div class="settings-panel panel-hidden-right" id="panel-subs">
-                <div class="settings-sub-header" onclick="closeSubPanel()" role="button" tabindex="0">
-                  <button class="settings-back-btn" aria-label="Back"><i class="fa-solid fa-chevron-left"></i></button>
-                  <span class="settings-sub-title">Subtitles / Captions</span>
-                  <button class="settings-close-btn" onclick="closeSettings()" aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
-                </div>
-                <div class="settings-sub-list" id="subs-sub-list">
-                  <div class="settings-sub-item sub-active" id="subs-off-item" onclick="selectSubtitle(null)">
-                    <div class="sub-item-check"><i class="fa-solid fa-check"></i></div>
-                    <span class="sub-item-label">Off</span>
-                  </div>
-                </div>
-              </div><!-- /panel-subs -->
-
-            </div><!-- /settings-panels -->
-          </div><!-- /settings-popup -->
 
           <!-- ── Controls bar ──────────────────────────────────── -->
           <div class="ctrl-bar" id="ctrl-bar">
@@ -1751,12 +1789,6 @@
 
             <div class="ctrl-sep"></div>
 
-            <!-- Settings — z-index and pointer-events are explicitly set
-                 on .ctrl-btn so this button can NEVER be blocked by the overlay -->
-            <button class="ctrl-btn" id="settings-btn" onclick="toggleSettings(event)" title="Settings (S)">
-              <i class="fa-solid fa-gear"></i>
-            </button>
-
             <!-- PiP -->
             <button class="ctrl-btn" id="pip-btn" onclick="togglePiP()" title="Picture-in-Picture (P)">
               <i class="fa-solid fa-window-restore"></i>
@@ -1770,6 +1802,19 @@
           </div>
 
         </div><!-- /video-wrapper -->
+
+        <!-- ── Settings Button (OUTSIDE video player, inside player-card) ── -->
+        {% if file_type == 'video' and browser_playable %}
+        <div class="settings-trigger-wrap" id="settings-trigger-wrap">
+          <button class="settings-trigger-btn" id="settings-btn"
+                  onclick="toggleSettings(event)"
+                  title="Settings (S)"
+                  aria-label="Player Settings"
+                  aria-haspopup="dialog">
+            <i class="fa-solid fa-gear"></i>
+          </button>
+        </div>
+        {% endif %}
 
         {% else %}
         <!-- ── Unsupported format banner ──────────────────────── -->
@@ -2115,36 +2160,64 @@
     video.addEventListener('enterpictureinpicture', onEnterPiP);
     video.addEventListener('leavepictureinpicture',  onLeavePiP);
 
-    /* Auto-hide controls (touch-friendly) */
+    /* ── Auto-hide controls (touch + desktop friendly) ──────────── */
     let hideTimer;
     let _ctrlVisible = false;
 
+    // Show controls and restart the hide timer
     const showControls = () => {
-      if (wrapper) wrapper.classList.add('ctrl-visible');
+      if (!wrapper) return;
+      wrapper.classList.add('ctrl-visible');
       _ctrlVisible = true;
       clearTimeout(hideTimer);
-      hideTimer = setTimeout(hideControlsIfPlaying, 3200);
+      // Only auto-hide when video is actually playing
+      if (video && !video.paused) {
+        hideTimer = setTimeout(hideControlsIfPlaying, 3000);
+      }
     };
 
+    // Hide controls only when playing and settings are closed
     const hideControlsIfPlaying = () => {
       if (video && !video.paused && !settingsOpen) {
         if (wrapper) wrapper.classList.remove('ctrl-visible');
         _ctrlVisible = false;
-      } else {
-        hideTimer = setTimeout(hideControlsIfPlaying, 1000);
+      } else if (!settingsOpen) {
+        // Still paused — try again shortly
+        hideTimer = setTimeout(hideControlsIfPlaying, 1500);
       }
     };
 
+    // Desktop: show on mouse movement inside wrapper
     if (wrapper) {
-      wrapper.addEventListener('mousemove',  showControls);
-      wrapper.addEventListener('touchstart', (e) => {
+      wrapper.addEventListener('mousemove', showControls);
+    }
+
+    // Mobile: show on any touchstart inside wrapper
+    if (wrapper) {
+      wrapper.addEventListener('touchstart', () => {
         showControls();
       }, { passive: true });
     }
 
-    /* Hide controls when tapping outside player */
+    // Re-trigger hide timer when video resumes
+    video.addEventListener('play', () => {
+      clearTimeout(hideTimer);
+      if (_ctrlVisible) {
+        hideTimer = setTimeout(hideControlsIfPlaying, 3000);
+      }
+    });
+
+    // Always show controls when paused
+    video.addEventListener('pause', () => {
+      clearTimeout(hideTimer);
+      showControls();
+    });
+
+    /* Hide controls when tapping/clicking outside the entire player-card */
     document.addEventListener('touchstart', (e) => {
-      if (wrapper && !wrapper.contains(e.target) && !settingsOpen) {
+      if (settingsOpen) return;
+      const playerCard = document.getElementById('player-card');
+      if (playerCard && !playerCard.contains(e.target)) {
         if (wrapper) wrapper.classList.remove('ctrl-visible');
         _ctrlVisible = false;
         clearTimeout(hideTimer);
@@ -2386,13 +2459,20 @@
     const btn = document.getElementById('settings-btn');
     if (btn) btn.classList.add('active');
 
-    // On desktop: position popup above settings button
+    // On desktop: position popup above the external settings trigger button
     if (popup && window.innerWidth > 600 && btn) {
       const btnRect = btn.getBoundingClientRect();
-      popup.style.bottom  = (window.innerHeight - btnRect.top + 8) + 'px';
-      popup.style.right   = (window.innerWidth - btnRect.right + 0) + 'px';
-      popup.style.top     = 'auto';
-      popup.style.left    = 'auto';
+      // Position above the trigger, aligned to its right edge
+      popup.style.top    = 'auto';
+      popup.style.left   = 'auto';
+      popup.style.bottom = (window.innerHeight - btnRect.top + 8) + 'px';
+      popup.style.right  = (window.innerWidth - btnRect.right) + 'px';
+    } else if (popup && window.innerWidth <= 600) {
+      // Mobile bottom sheet - reset any desktop positioning
+      popup.style.top    = '';
+      popup.style.left   = '';
+      popup.style.bottom = '';
+      popup.style.right  = '';
     }
   }
 

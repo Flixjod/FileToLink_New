@@ -541,6 +541,140 @@
       .btn-row { flex-direction: column; align-items: stretch; }
       .btn { justify-content: center; }
     }
+
+    /* ── Bandwidth Cycle Info ─────────────────────────────────── */
+    .bw-cycle-block {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 12px;
+      margin-bottom: 26px;
+    }
+    .bw-cycle-card {
+      background: var(--stat-bg);
+      border: 1px solid var(--stat-border);
+      border-radius: 16px;
+      padding: 16px 14px;
+      text-align: center;
+    }
+    .bw-cycle-label {
+      font-size: .68rem; font-weight: 700;
+      text-transform: uppercase; letter-spacing: .8px;
+      color: var(--text-muted); margin-bottom: 6px;
+    }
+    .bw-cycle-value {
+      font-size: .96rem; font-weight: 800;
+      color: var(--text-primary);
+    }
+    .bw-cycle-value.highlight { color: #4facfe; }
+    .bw-cycle-value.warning   { color: #f6d365; }
+    .bw-cycle-value.critical  { color: #ff6b6b; }
+
+    /* ── Analytics Tab ───────────────────────────────────────── */
+    .analytics-range-btns {
+      display: flex; gap: 8px; flex-wrap: wrap;
+      margin-bottom: 20px;
+    }
+    .range-btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 9px 18px; border-radius: 12px;
+      font-family: 'Poppins', sans-serif;
+      font-weight: 700; font-size: .8rem;
+      border: 1px solid var(--tab-border);
+      background: var(--tab-bg);
+      color: var(--text-label);
+      cursor: pointer;
+      transition: all .22s ease;
+    }
+    .range-btn:hover { background: var(--tab-hover-bg); color: var(--text-primary); }
+    .range-btn.active {
+      background: linear-gradient(135deg, #4facfe, #00f2fe);
+      color: #fff; border-color: transparent;
+      box-shadow: 0 4px 16px rgba(79,172,254,.35);
+    }
+    .custom-range-row {
+      display: none; align-items: center; gap: 10px; flex-wrap: wrap;
+      padding: 14px 16px;
+      background: var(--stat-bg);
+      border-radius: 14px;
+      border: 1px solid var(--stat-border);
+      margin-bottom: 20px;
+    }
+    .custom-range-row.visible { display: flex; }
+    .custom-range-row label {
+      font-size: .8rem; font-weight: 700; color: var(--text-info-label);
+      white-space: nowrap;
+    }
+    .custom-range-row input[type="date"] {
+      padding: 8px 12px;
+      border-radius: 10px;
+      border: 1px solid var(--tab-border);
+      background: var(--panel-bg);
+      color: var(--text-primary);
+      font-family: 'Poppins', sans-serif;
+      font-size: .82rem;
+      font-weight: 600;
+      cursor: pointer;
+      outline: none;
+    }
+    .custom-range-row input[type="date"]:focus {
+      border-color: #4facfe;
+      box-shadow: 0 0 0 2px rgba(79,172,254,.2);
+    }
+    .analytics-result {
+      background: var(--stat-bg);
+      border: 1px solid var(--stat-border);
+      border-radius: 20px;
+      padding: 22px 24px;
+      margin-bottom: 20px;
+    }
+    .analytics-total {
+      display: flex; align-items: baseline; gap: 10px;
+      margin-bottom: 20px;
+    }
+    .analytics-total-val {
+      font-size: 2rem; font-weight: 800;
+      color: #4facfe; line-height: 1;
+    }
+    .analytics-total-label {
+      font-size: .84rem; color: var(--text-muted); font-weight: 600;
+    }
+    .analytics-daily-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .analytics-daily-table th,
+    .analytics-daily-table td {
+      text-align: left;
+      padding: 9px 8px;
+      font-size: .8rem;
+      border-bottom: 1px solid var(--info-row-border);
+    }
+    .analytics-daily-table th {
+      font-weight: 700;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      font-size: .7rem;
+    }
+    .analytics-daily-table td { color: var(--text-primary); font-weight: 600; }
+    .analytics-daily-table .bar-cell { width: 50%; }
+    .analytics-bar-wrap {
+      background: var(--progress-track);
+      border-radius: 999px; height: 6px; overflow: hidden;
+    }
+    .analytics-bar-fill {
+      height: 100%; border-radius: 999px;
+      background: linear-gradient(90deg, #4facfe, #00f2fe);
+    }
+    .analytics-empty {
+      text-align: center; color: var(--text-muted);
+      font-size: .88rem; padding: 28px 0;
+    }
+    .analytics-empty i { font-size: 2rem; display: block; margin-bottom: 10px; opacity: .4; }
+    .analytics-loading {
+      text-align: center; color: var(--text-muted);
+      font-size: .88rem; padding: 20px 0;
+    }
   </style>
 </head>
 <body>
@@ -577,6 +711,10 @@
       <button class="tab-btn" role="tab" onclick="switchTab('health', this)" id="tab-health">
         <i class="fa-solid fa-heart-pulse"></i>
         <span>Health</span>
+      </button>
+      <button class="tab-btn" role="tab" onclick="switchTab('analytics', this)" id="tab-analytics">
+        <i class="fa-solid fa-chart-bar"></i>
+        <span>Analytics</span>
       </button>
     </div>
 
@@ -669,6 +807,23 @@
         </div>
       </div>
       <div class="panel-body">
+
+        <!-- Bandwidth Cycle Info cards -->
+        <div class="bw-cycle-block">
+          <div class="bw-cycle-card">
+            <div class="bw-cycle-label"><i class="fa-solid fa-calendar-plus" style="margin-right:4px"></i>Cycle Started</div>
+            <div class="bw-cycle-value" id="bw-cycle-start">{{ bw_cycle_start }}</div>
+          </div>
+          <div class="bw-cycle-card">
+            <div class="bw-cycle-label"><i class="fa-solid fa-arrows-rotate" style="margin-right:4px"></i>Auto Reset</div>
+            <div class="bw-cycle-value highlight">After {{ bw_cycle_days }} Days</div>
+          </div>
+          <div class="bw-cycle-card">
+            <div class="bw-cycle-label"><i class="fa-solid fa-hourglass-half" style="margin-right:4px"></i>Next Reset In</div>
+            <div class="bw-cycle-value {% if bw_cycle_days_left <= 3 %}critical{% elif bw_cycle_days_left <= 7 %}warning{% else %}highlight{% endif %}"
+                 id="bw-cycle-days-left">{{ bw_cycle_days_left }} Days</div>
+          </div>
+        </div>
 
         <div class="info-section">
           <div class="info-section-title"><i class="fa-solid fa-circle-info"></i> Current Status</div>
@@ -848,6 +1003,59 @@
       </div>
     </div>
 
+
+    <!-- ── Analytics Panel ──────────────────────────────────── -->
+    <div class="panel" id="panel-analytics">
+      <div class="panel-header">
+        <div class="panel-title">
+          <div class="panel-title-icon" style="background:linear-gradient(135deg,#a18cd1,#fbc2eb);color:#fff;box-shadow:0 6px 18px rgba(161,140,209,.3);">
+            <i class="fa-solid fa-chart-bar"></i>
+          </div>
+          <div>
+            <h2>Bandwidth Analytics</h2>
+            <p>Usage statistics by date range</p>
+          </div>
+        </div>
+      </div>
+      <div class="panel-body">
+
+        <!-- Range selector buttons -->
+        <div class="analytics-range-btns">
+          <button class="range-btn active" id="range-7d"  onclick="selectRange('7d',  this)">
+            <i class="fa-solid fa-calendar-week"></i> Last 7 Days
+          </button>
+          <button class="range-btn" id="range-30d" onclick="selectRange('30d', this)">
+            <i class="fa-solid fa-calendar"></i> Last 30 Days
+          </button>
+          <button class="range-btn" id="range-custom" onclick="selectRange('custom', this)">
+            <i class="fa-solid fa-calendar-range"></i> Custom Range
+          </button>
+        </div>
+
+        <!-- Custom date range row (hidden until Custom is selected) -->
+        <div class="custom-range-row" id="custom-range-row">
+          <label for="range-from"><i class="fa-solid fa-calendar-day" style="margin-right:4px"></i>From:</label>
+          <input type="date" id="range-from" oninput="onCustomRangeChange()">
+          <label for="range-to"><i class="fa-solid fa-arrow-right" style="margin:0 2px"></i>To:</label>
+          <input type="date" id="range-to" oninput="onCustomRangeChange()">
+        </div>
+
+        <!-- Results area -->
+        <div id="analytics-result-area">
+          <div class="analytics-loading" id="analytics-loading">
+            <i class="fa-solid fa-circle-notch spin"></i> Loading…
+          </div>
+        </div>
+
+        <div class="btn-row">
+          <a href="/" class="btn btn-primary"><i class="fa-solid fa-house"></i> Home</a>
+          <button class="btn btn-refresh" onclick="loadAnalytics()">
+            <i class="fa-solid fa-rotate-right" id="analytics-refresh-icon"></i> Refresh
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- ── Footer ─────────────────────────────────────────── -->
     <div class="footer-note">
       <i class="fa-solid fa-crown" style="color:#ffd700;margin-right:5px;"></i>
@@ -947,6 +1155,16 @@
         mode.className = 'badge ' + (d.bandwidth_mode ? 'badge-ok' : 'badge-error');
         mode.textContent = d.bandwidth_mode ? 'Active' : 'Inactive';
       }
+      // Update cycle info
+      const startEl    = document.getElementById('bw-cycle-start');
+      const daysLeftEl = document.getElementById('bw-cycle-days-left');
+      if (startEl)    startEl.textContent    = d.cycle_start_date ?? '—';
+      if (daysLeftEl) {
+        const dl = d.cycle_days_left ?? 30;
+        daysLeftEl.textContent = dl + ' Days';
+        daysLeftEl.className   = 'bw-cycle-value ' +
+          (dl <= 3 ? 'critical' : dl <= 7 ? 'warning' : 'highlight');
+      }
     } catch(e) { console.warn('bw refresh failed:', e); }
     stopSpin(ico);
   }
@@ -1008,6 +1226,106 @@
     refreshHealth();
     if (_healthTimer) return;
     _healthTimer = setInterval(refreshHealth, 5000);
+  }
+
+
+  // ── Analytics ──────────────────────────────────────────────
+  let _currentRange = '7d';
+
+  function selectRange(range, btn) {
+    _currentRange = range;
+    document.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+
+    const customRow = document.getElementById('custom-range-row');
+    if (range === 'custom') {
+      customRow.classList.add('visible');
+      // Set sensible defaults if empty
+      const today = new Date().toISOString().slice(0, 10);
+      const from  = document.getElementById('range-from');
+      const to    = document.getElementById('range-to');
+      if (!from.value) from.value = today;
+      if (!to.value)   to.value   = today;
+      loadAnalytics();
+    } else {
+      customRow.classList.remove('visible');
+      loadAnalytics();
+    }
+  }
+
+  function onCustomRangeChange() {
+    // Debounce to avoid firing on every keystroke
+    clearTimeout(_customRangeTimer);
+    _customRangeTimer = setTimeout(loadAnalytics, 600);
+  }
+  let _customRangeTimer;
+
+  async function loadAnalytics() {
+    const area    = document.getElementById('analytics-result-area');
+    const ico     = spinIcon('analytics-refresh-icon');
+    if (area) area.innerHTML = '<div class="analytics-loading"><i class="fa-solid fa-circle-notch spin"></i> Loading…</div>';
+
+    try {
+      let url = `/api/bandwidth/analytics?range=${_currentRange}`;
+      if (_currentRange === 'custom') {
+        const from = document.getElementById('range-from')?.value;
+        const to   = document.getElementById('range-to')?.value;
+        if (!from) { stopSpin(ico); return; }
+        url += `&from=${from}&to=${to || from}`;
+      }
+
+      const r = await fetch(url);
+      if (!r.ok) throw new Error(r.statusText);
+      const d = await r.json();
+
+      let html = '<div class="analytics-result">';
+
+      // Total
+      html += `<div class="analytics-total">
+        <span class="analytics-total-val">${d.total_fmt || '0 B'}</span>
+        <span class="analytics-total-label">total — ${d.from} → ${d.to}</span>
+      </div>`;
+
+      if (!d.daily || d.daily.length === 0) {
+        html += '<div class="analytics-empty"><i class="fa-solid fa-inbox"></i>No bandwidth data for this period.</div>';
+      } else {
+        const maxBytes = Math.max(...d.daily.map(row => row.bytes), 1);
+        html += `<table class="analytics-daily-table">
+          <thead><tr>
+            <th>Date</th>
+            <th>Usage</th>
+            <th class="bar-cell">Bar</th>
+          </tr></thead><tbody>`;
+        d.daily.forEach(row => {
+          const pct = Math.round((row.bytes / maxBytes) * 100);
+          html += `<tr>
+            <td>${row.date}</td>
+            <td>${row.fmt}</td>
+            <td class="bar-cell">
+              <div class="analytics-bar-wrap">
+                <div class="analytics-bar-fill" style="width:${pct}%"></div>
+              </div>
+            </td>
+          </tr>`;
+        });
+        html += '</tbody></table>';
+      }
+
+      html += '</div>';
+      if (area) area.innerHTML = html;
+    } catch(e) {
+      if (area) area.innerHTML = '<div class="analytics-empty"><i class="fa-solid fa-triangle-exclamation"></i>Failed to load analytics data.</div>';
+      console.warn('analytics load failed:', e);
+    }
+    stopSpin(ico);
+  }
+
+  // Load when analytics tab is activated
+  const _origSwitchTab = switchTab;
+  // Patch switchTab to load analytics on first open
+  function switchTab(name, btn) {
+    _origSwitchTab(name, btn);
+    if (name === 'analytics') loadAnalytics();
   }
 
   // ── Auto-refresh every 30s ─────────────────────────────────
