@@ -19,6 +19,8 @@ class Config:
     FILE_TYPE_IMAGE    = "image"
     FILE_TYPE_DOCUMENT = "document"
 
+    BOT_INFO = None
+
     UPTIME: float = 0.0
 
     OWNER_ID = list(
