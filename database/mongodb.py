@@ -1,5 +1,5 @@
 from motor.motor_asyncio import AsyncIOMotorClient
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 import logging
 
@@ -59,6 +59,130 @@ class Database:
             logger.error("❌ ᴅʙ ɪɴɪᴛ ᴇʀʀᴏʀ: %s", e)
             return False
 
+    # ─────────────────────────────────────────────────────────────────────────
+    # Bandwidth Cycle — persistent 30-day rolling window
+    # Stored in the `config` collection under key="bandwidth_cycle".
+    # This data SURVIVES server restarts / redeployments.
+    # ─────────────────────────────────────────────────────────────────────────
+    async def get_bandwidth_cycle(self) -> Dict:
+        """Return the current bandwidth cycle document, auto-creating and
+        auto-advancing it when the 30-day window has expired."""
+        try:
+            now = datetime.now(timezone.utc)
+            doc = await self.config.find_one({"key": "bandwidth_cycle"})
+
+            if not doc:
+                # First-ever initialisation
+                start      = now
+                next_reset = start + timedelta(days=30)
+                doc = {
+                    "key":                    "bandwidth_cycle",
+                    "bandwidth_cycle_start":  start,
+                    "bandwidth_cycle_next_reset": next_reset,
+                    "bandwidth_used":         0,
+                }
+                await self.config.insert_one(doc)
+                logger.info("🔄 bandwidth cycle initialised — next reset: %s", next_reset.date())
+                return doc
+
+            # Check whether the window has expired and roll it forward
+            next_reset = doc.get("bandwidth_cycle_next_reset")
+            # Handle both timezone-aware and naive datetimes from Mongo
+            if next_reset is not None:
+                if next_reset.tzinfo is None:
+                    next_reset = next_reset.replace(tzinfo=timezone.utc)
+
+            if next_reset and now >= next_reset:
+                # Advance the cycle: start = old next_reset, next = start + 30d
+                new_start      = next_reset
+                new_next_reset = new_start + timedelta(days=30)
+                updates = {
+                    "bandwidth_cycle_start":      new_start,
+                    "bandwidth_cycle_next_reset": new_next_reset,
+                    "bandwidth_used":             0,
+                }
+                await self.config.update_one(
+                    {"key": "bandwidth_cycle"},
+                    {"$set": updates},
+                )
+                doc.update(updates)
+                logger.info(
+                    "🔄 bandwidth cycle reset — new period %s → %s",
+                    new_start.date(), new_next_reset.date(),
+                )
+
+            return doc
+        except Exception as e:
+            logger.error("get_bandwidth_cycle error: %s", e)
+            return {}
+
+    async def increment_cycle_bandwidth(self, size: int) -> bool:
+        """Add *size* bytes to the current cycle's bandwidth_used counter.
+        This is idempotent with respect to the cycle window — if the window
+        has expired it will be auto-reset before incrementing."""
+        try:
+            # Ensure the cycle doc is current (may trigger auto-reset)
+            await self.get_bandwidth_cycle()
+            await self.config.update_one(
+                {"key": "bandwidth_cycle"},
+                {"$inc": {"bandwidth_used": size}},
+                upsert=True,
+            )
+            return True
+        except Exception as e:
+            logger.error("increment_cycle_bandwidth error: %s", e)
+            return False
+
+    async def get_cycle_bandwidth_used(self) -> int:
+        """Return the bytes used in the current 30-day cycle."""
+        try:
+            doc = await self.get_bandwidth_cycle()
+            return int(doc.get("bandwidth_used", 0))
+        except Exception as e:
+            logger.error("get_cycle_bandwidth_used error: %s", e)
+            return 0
+
+    async def get_bandwidth_by_range(
+        self,
+        from_date: Optional[datetime] = None,
+        to_date:   Optional[datetime] = None,
+    ) -> Dict:
+        """Aggregate bandwidth usage for a date range.
+        Uses indexed `date` field — no full-table scan.
+        Both *from_date* and *to_date* are inclusive and UTC-date-only.
+        """
+        try:
+            query: Dict = {}
+            if from_date or to_date:
+                date_filter: Dict = {}
+                if from_date:
+                    date_filter["$gte"] = from_date.strftime("%Y-%m-%d")
+                if to_date:
+                    date_filter["$lte"] = to_date.strftime("%Y-%m-%d")
+                query["date"] = date_filter
+
+            pipeline = [
+                {"$match": query},
+                {"$group": {"_id": None, "total": {"$sum": "$total_bytes"}}},
+            ]
+            result = await self.bandwidth.aggregate(pipeline).to_list(length=1)
+            total  = result[0]["total"] if result else 0
+            return {"total_bytes": total, "from_date": from_date, "to_date": to_date}
+        except Exception as e:
+            logger.error("get_bandwidth_by_range error: %s", e)
+            return {"total_bytes": 0}
+
+    async def get_bandwidth_last_n_days(self, days: int = 7) -> int:
+        """Return bytes used in the last *days* calendar days (today included)."""
+        try:
+            now        = datetime.now(timezone.utc)
+            from_date  = now - timedelta(days=days - 1)
+            result     = await self.get_bandwidth_by_range(from_date=from_date, to_date=now)
+            return result.get("total_bytes", 0)
+        except Exception as e:
+            logger.error("get_bandwidth_last_n_days error: %s", e)
+            return 0
+
     async def add_file(self, file_data: Dict) -> bool:
         try:
             doc = {
@@ -71,7 +195,7 @@ class Database:
                 "file_size":        file_data["file_size"],
                 "file_type":        file_data["file_type"],
                 "mime_type":        file_data.get("mime_type", ""),
-                "created_at":       datetime.utcnow(),
+                "created_at":       datetime.now(timezone.utc),
                 "bandwidth_used":   0,
             }
             await self.files.insert_one(doc)
@@ -147,12 +271,12 @@ class Database:
 
     async def update_bandwidth(self, size: int) -> bool:
         try:
-            today = datetime.utcnow().date().isoformat()
+            today = datetime.now(timezone.utc).date().isoformat()
             await self.bandwidth.update_one(
                 {"date": today},
                 {
                     "$inc": {"total_bytes": size},
-                    "$set": {"last_updated": datetime.utcnow()},
+                    "$set": {"last_updated": datetime.now(timezone.utc)},
                 },
                 upsert=True,
             )
@@ -167,7 +291,9 @@ class Database:
                 {"message_id": message_id},
                 {"$inc": {"bandwidth_used": size}},
             )
+            # Update daily record AND 30-day cycle counter atomically
             await self.update_bandwidth(size)
+            await self.increment_cycle_bandwidth(size)
             return True
         except Exception as e:
             logger.error("track bandwidth error: %s", e)
@@ -188,7 +314,7 @@ class Database:
             if existing:
                 await self.users.update_one(
                     {"user_id": user_data["user_id"]},
-                    {"$set": {"last_activity": datetime.utcnow()}},
+                    {"$set": {"last_activity": datetime.now(timezone.utc)}},
                 )
                 return False  # not new
 
@@ -197,8 +323,8 @@ class Database:
                 "username":      user_data.get("username", ""),
                 "first_name":    user_data.get("first_name", ""),
                 "last_name":     user_data.get("last_name", ""),
-                "first_used":    datetime.utcnow(),
-                "last_activity": datetime.utcnow(),
+                "first_used":    datetime.now(timezone.utc),
+                "last_activity": datetime.now(timezone.utc),
             })
             logger.info("👤 ɴᴇᴡ ᴜꜱᴇʀ ʀᴇɢɪꜱᴛᴇʀᴇᴅ: %s", user_data["user_id"])
             return True  # new user
@@ -225,15 +351,25 @@ class Database:
     async def get_bandwidth_stats(self) -> Dict:
         try:
             total       = await self.get_total_bandwidth()
-            today       = datetime.utcnow().date().isoformat()
+            today       = datetime.now(timezone.utc).date().isoformat()
             today_stats = await self.bandwidth.find_one({"date": today})
+            cycle       = await self.get_bandwidth_cycle()
             return {
-                "total_bandwidth": total,
-                "today_bandwidth": today_stats.get("total_bytes", 0) if today_stats else 0,
+                "total_bandwidth":            total,
+                "today_bandwidth":            today_stats.get("total_bytes", 0) if today_stats else 0,
+                "cycle_bandwidth_used":       int(cycle.get("bandwidth_used", 0)),
+                "bandwidth_cycle_start":      cycle.get("bandwidth_cycle_start"),
+                "bandwidth_cycle_next_reset": cycle.get("bandwidth_cycle_next_reset"),
             }
         except Exception as e:
             logger.error("get bandwidth stats error: %s", e)
-            return {"total_bandwidth": 0, "today_bandwidth": 0}
+            return {
+                "total_bandwidth":            0,
+                "today_bandwidth":            0,
+                "cycle_bandwidth_used":       0,
+                "bandwidth_cycle_start":      None,
+                "bandwidth_cycle_next_reset": None,
+            }
 
     async def get_stats(self) -> Dict:
         try:
@@ -257,7 +393,7 @@ class Database:
         try:
             await self.sudo_users.update_one(
                 {"user_id": user_id},
-                {"$set": {"user_id": user_id, "added_by": added_by, "added_at": datetime.utcnow()}},
+                {"$set": {"user_id": user_id, "added_by": added_by, "added_at": datetime.now(timezone.utc)}},
                 upsert=True,
             )
             return True

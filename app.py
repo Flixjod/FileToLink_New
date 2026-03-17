@@ -2,6 +2,7 @@ import json
 import logging
 import time
 import asyncio
+from datetime import datetime, timezone
 from pathlib import Path
 
 import psutil
@@ -28,8 +29,15 @@ logger = logging.getLogger(__name__)
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 
 
+DEFAULT_BOT_NAME     = "FLiX File Bot"
+DEFAULT_BOT_USERNAME = "FLiXFileBot"
+
+
 def _bot_info(bot: Bot) -> dict:
-    me = getattr(bot, "me", None)
+    """Return bot identity from the in-memory cache (Config.BOT_INFO).
+    Falls back to bot.me for backward compatibility, then to static defaults.
+    Using the cached value avoids redundant Telegram API calls."""
+    me = Config.BOT_INFO or getattr(bot, "me", None)
     return {
         "bot_name":     (me.first_name if me else None) or DEFAULT_BOT_NAME,
         "bot_username": (me.username   if me else None) or DEFAULT_BOT_USERNAME,
@@ -177,13 +185,38 @@ def build_app(bot: Bot, database) -> web.Application:
         file_hash = request.match_info["file_hash"]
         return await _tracked_stream(request, file_hash, is_download=True)
 
+    def _fmt_date(dt) -> str:
+        """Format a datetime (aware or naive) as 'DD Mon YYYY', e.g. '12 Mar 2026'."""
+        if dt is None:
+            return "N/A"
+        if hasattr(dt, "strftime"):
+            return dt.strftime("%d %b %Y")
+        return str(dt)
+
+    def _days_remaining(next_reset) -> str:
+        """Return human-readable days left until next_reset."""
+        if next_reset is None:
+            return "N/A"
+        now = datetime.now(timezone.utc)
+        if next_reset.tzinfo is None:
+            next_reset = next_reset.replace(tzinfo=timezone.utc)
+        delta = next_reset - now
+        days  = max(0, delta.days)
+        return f"{days} Day{'s' if days != 1 else ''}"
+
     async def _collect_panel_data():
         try:
             stats    = await database.get_stats()
             bw_stats = await database.get_bandwidth_stats()
         except Exception:
             stats    = {"total_users": 0, "total_files": 0}
-            bw_stats = {"total_bandwidth": 0, "today_bandwidth": 0}
+            bw_stats = {
+                "total_bandwidth":            0,
+                "today_bandwidth":            0,
+                "cycle_bandwidth_used":       0,
+                "bandwidth_cycle_start":      None,
+                "bandwidth_cycle_next_reset": None,
+            }
 
         max_bw    = Config.get("max_bandwidth", 107374182400)
         bw_mode   = Config.get("bandwidth_mode", True)
@@ -191,6 +224,12 @@ def build_app(bot: Bot, database) -> web.Application:
         bw_today  = bw_stats["today_bandwidth"]
         remaining = max(0, max_bw - bw_used)
         bw_pct    = round((bw_used / max_bw * 100) if max_bw else 0, 1)
+
+        # Cycle fields
+        cycle_used       = bw_stats.get("cycle_bandwidth_used", 0)
+        cycle_start      = bw_stats.get("bandwidth_cycle_start")
+        cycle_next_reset = bw_stats.get("bandwidth_cycle_next_reset")
+        cycle_pct        = round((cycle_used / max_bw * 100) if max_bw else 0, 1)
 
         try:
             ram          = psutil.virtual_memory()
@@ -209,21 +248,28 @@ def build_app(bot: Bot, database) -> web.Application:
 
         return {
             **info,
-            "total_users":  stats.get("total_users",  0),
-            "total_chats":  stats.get("total_users",  0),
-            "total_files":  stats.get("total_files",  0),
-            "ram_used":     ram_used_fmt,
-            "ram_pct":      ram_pct,
-            "cpu_pct":      cpu_pct,
-            "uptime":       uptime_str,
-            "bw_mode":      bw_mode,
-            "bw_limit":     format_size(max_bw),
-            "bw_used":      format_size(bw_used),
-            "bw_today":     format_size(bw_today),
-            "bw_remaining": format_size(remaining),
-            "bw_pct":       bw_pct,
-            "bot_status":   "running" if getattr(bot, "me", None) else "initializing",
-            "active_conns": get_active_session_count(),
+            "total_users":       stats.get("total_users",  0),
+            "total_chats":       stats.get("total_users",  0),
+            "total_files":       stats.get("total_files",  0),
+            "ram_used":          ram_used_fmt,
+            "ram_pct":           ram_pct,
+            "cpu_pct":           cpu_pct,
+            "uptime":            uptime_str,
+            "bw_mode":           bw_mode,
+            "bw_limit":          format_size(max_bw),
+            "bw_used":           format_size(bw_used),
+            "bw_today":          format_size(bw_today),
+            "bw_remaining":      format_size(remaining),
+            "bw_pct":            bw_pct,
+            # 30-day cycle fields
+            "cycle_used":        format_size(cycle_used),
+            "cycle_used_raw":    cycle_used,
+            "cycle_pct":         cycle_pct,
+            "cycle_start":       _fmt_date(cycle_start),
+            "cycle_next_reset":  _fmt_date(cycle_next_reset),
+            "cycle_days_left":   _days_remaining(cycle_next_reset),
+            "bot_status":        "running" if getattr(bot, "me", None) else "initializing",
+            "active_conns":      get_active_session_count(),
         }
 
     def _format_uptime(seconds: float) -> str:
@@ -284,29 +330,100 @@ def build_app(bot: Bot, database) -> web.Application:
 
     async def api_bandwidth(request: web.Request):
         try:
-            stats     = await database.get_bandwidth_stats()
-            max_bw    = Config.get("max_bandwidth", 107374182400)
-            bw_mode   = Config.get("bandwidth_mode", True)
-            used      = stats["total_bandwidth"]
-            today     = stats["today_bandwidth"]
-            remaining = max(0, max_bw - used)
-            pct       = round((used / max_bw * 100) if max_bw else 0, 1)
+            stats      = await database.get_bandwidth_stats()
+            max_bw     = Config.get("max_bandwidth", 107374182400)
+            bw_mode    = Config.get("bandwidth_mode", True)
+            used       = stats["total_bandwidth"]
+            today      = stats["today_bandwidth"]
+            remaining  = max(0, max_bw - used)
+            pct        = round((used / max_bw * 100) if max_bw else 0, 1)
+
+            cycle_used       = stats.get("cycle_bandwidth_used", 0)
+            cycle_start      = stats.get("bandwidth_cycle_start")
+            cycle_next_reset = stats.get("bandwidth_cycle_next_reset")
+            cycle_pct        = round((cycle_used / max_bw * 100) if max_bw else 0, 1)
+
             payload = {
-                **stats,
-                "limit":          max_bw,
-                "remaining":      remaining,
-                "percentage":     pct,
-                "bandwidth_mode": bw_mode,
+                "total_bandwidth":  used,
+                "today_bandwidth":  today,
+                "limit":            max_bw,
+                "remaining":        remaining,
+                "percentage":       pct,
+                "bandwidth_mode":   bw_mode,
+                # 30-day cycle
+                "cycle_bandwidth_used":       cycle_used,
+                "cycle_percentage":           cycle_pct,
+                "bandwidth_cycle_start":      _fmt_date(cycle_start),
+                "bandwidth_cycle_next_reset": _fmt_date(cycle_next_reset),
+                "cycle_days_left":            _days_remaining(cycle_next_reset),
                 "formatted": {
                     "total_bandwidth": format_size(used),
                     "today_bandwidth": format_size(today),
                     "limit":           format_size(max_bw),
                     "remaining":       format_size(remaining),
+                    "cycle_used":      format_size(cycle_used),
                 },
             }
             return web.Response(text=json.dumps(payload), content_type="application/json")
         except Exception as exc:
             logger.error("api_bandwidth error: %s", exc)
+            return web.json_response({"error": str(exc)}, status=500)
+
+    async def api_bandwidth_analytics(request: web.Request):
+        """Return bandwidth totals for last-7d, last-30d, or a custom date range.
+
+        Query params:
+          range  = '7d' | '30d' | 'custom'  (default: '7d')
+          from   = 'YYYY-MM-DD'              (required for custom)
+          to     = 'YYYY-MM-DD'              (required for custom)
+        """
+        try:
+            rng      = request.rel_url.query.get("range", "7d")
+            now      = datetime.now(timezone.utc)
+
+            if rng == "7d":
+                total = await database.get_bandwidth_last_n_days(7)
+                payload = {
+                    "range": "7d",
+                    "total_bytes": total,
+                    "formatted":   format_size(total),
+                }
+            elif rng == "30d":
+                total = await database.get_bandwidth_last_n_days(30)
+                payload = {
+                    "range": "30d",
+                    "total_bytes": total,
+                    "formatted":   format_size(total),
+                }
+            elif rng == "custom":
+                from_str = request.rel_url.query.get("from")
+                to_str   = request.rel_url.query.get("to")
+                if not from_str:
+                    return web.json_response({"error": "'from' param required for custom range"}, status=400)
+                try:
+                    from_dt = datetime.strptime(from_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+                    to_dt   = (
+                        datetime.strptime(to_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+                        if to_str else now
+                    )
+                except ValueError:
+                    return web.json_response({"error": "Invalid date format, use YYYY-MM-DD"}, status=400)
+
+                result = await database.get_bandwidth_by_range(from_date=from_dt, to_date=to_dt)
+                total  = result.get("total_bytes", 0)
+                payload = {
+                    "range":       "custom",
+                    "from":        from_dt.strftime("%Y-%m-%d"),
+                    "to":          to_dt.strftime("%Y-%m-%d"),
+                    "total_bytes": total,
+                    "formatted":   format_size(total),
+                }
+            else:
+                return web.json_response({"error": f"Unknown range '{rng}'"}, status=400)
+
+            return web.Response(text=json.dumps(payload), content_type="application/json")
+        except Exception as exc:
+            logger.error("api_bandwidth_analytics error: %s", exc)
             return web.json_response({"error": str(exc)}, status=500)
 
     async def api_health(request: web.Request):
@@ -341,15 +458,16 @@ def build_app(bot: Bot, database) -> web.Application:
             return await api_health(request)
         raise web.HTTPFound("/bot_settings")
 
-    app.router.add_get("/",                      home)
-    app.router.add_get("/stream/{file_hash}",    stream_page)
-    app.router.add_get("/dl/{file_hash}",        download_file)
-    app.router.add_get("/bot_settings",          bot_settings_page)
-    app.router.add_get("/api/stats",             api_stats)
-    app.router.add_get("/api/bandwidth",         api_bandwidth)
-    app.router.add_get("/api/health",            api_health)
-    app.router.add_get("/stats",                 stats_endpoint)
-    app.router.add_get("/bandwidth",             bandwidth_endpoint)
-    app.router.add_get("/health",                health_endpoint)
+    app.router.add_get("/",                          home)
+    app.router.add_get("/stream/{file_hash}",        stream_page)
+    app.router.add_get("/dl/{file_hash}",            download_file)
+    app.router.add_get("/bot_settings",              bot_settings_page)
+    app.router.add_get("/api/stats",                 api_stats)
+    app.router.add_get("/api/bandwidth",             api_bandwidth)
+    app.router.add_get("/api/bandwidth/analytics",   api_bandwidth_analytics)
+    app.router.add_get("/api/health",                api_health)
+    app.router.add_get("/stats",                     stats_endpoint)
+    app.router.add_get("/bandwidth",                 bandwidth_endpoint)
+    app.router.add_get("/health",                    health_endpoint)
 
     return app

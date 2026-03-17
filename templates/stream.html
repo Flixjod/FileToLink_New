@@ -414,15 +414,33 @@
       max-width: 100%;
     }
 
+    /* ── Player Container — wraps video + external controls ── */
+    /* z-index hierarchy:
+         video element      : z-index 1   (inside .video-wrapper)
+         player overlays    : z-index 5-25 (pip-banner, error-overlay)
+         progress row       : z-index 12
+         ctrl-bar           : z-index 15
+         settings-btn/menu  : z-index 50  (outside video, on .player-card)
+         settings-overlay   : z-index 9991 (fixed, full-page backdrop)
+         settings-popup     : z-index 9999 (fixed, topmost)
+    ────────────────────────────────────────────────────────── */
+    .player-container {
+      position: relative;
+      width: 100%;
+    }
+
     /* ── Custom Video Wrapper ──────────────────────── */
     .video-wrapper {
       position: relative;
       width: 100%;
       background: #000;
       border-radius: 24px;
+      /* overflow:hidden clips controls; use visible here and clip with the
+         border-radius trick via a pseudo-element when needed */
       overflow: hidden;
       user-select: none;
-      isolation: isolate;
+      /* z-index:1 so the video layer is below the external settings button */
+      z-index: 1;
     }
 
     .video-wrapper video {
@@ -432,6 +450,9 @@
       object-fit: contain;
       background: #000;
       cursor: pointer;
+      /* video element itself — lowest layer inside wrapper */
+      position: relative;
+      z-index: 1;
     }
 
     /* ── Fullscreen overrides ──────────────────────── */
@@ -529,10 +550,11 @@
       padding: 0 12px;
       opacity: 0;
       transition: opacity .25s ease;
-      z-index: 12;
+      z-index: 12;  /* above video (1), below ctrl-bar (15) */
       cursor: pointer;
     }
-    .video-wrapper:hover .progress-row,
+    /* Progress-row visibility: only via ctrl-visible (no CSS :hover rule
+       so touch devices don't get sticky hover states) */
     .video-wrapper.ctrl-visible .progress-row,
     .video-wrapper:fullscreen .progress-row,
     .video-wrapper:-webkit-full-screen .progress-row { opacity: 1; }
@@ -587,23 +609,20 @@
       padding: 8px 12px 10px;
       background: linear-gradient(transparent, rgba(0,0,0,.88));
       opacity: 0;
-      transition: opacity .25s ease;
-      z-index: 15;
+      transition: opacity .3s ease;
+      z-index: 15;  /* above video, pip-banner, progress-row */
       border-radius: 0 0 24px 24px;
       pointer-events: auto;
     }
-    .video-wrapper:hover .ctrl-bar,
+    /* Show ctrl-bar when wrapper has ctrl-visible class (auto-hide logic)
+       or when video is paused (handled via JS adding ctrl-visible) */
     .video-wrapper.ctrl-visible .ctrl-bar { opacity: 1; }
     .video-wrapper:fullscreen .ctrl-bar,
     .video-wrapper:-webkit-full-screen .ctrl-bar { border-radius: 0; }
 
-    /* Fullscreen auto-hide */
-    .video-wrapper:fullscreen:not(:hover) .ctrl-bar,
-    .video-wrapper:-webkit-full-screen:not(:hover) .ctrl-bar,
+    /* Fullscreen auto-hide — CSS-only layer (JS also manages ctrl-visible) */
     .video-wrapper:fullscreen:not(.ctrl-visible) .ctrl-bar,
     .video-wrapper:-webkit-full-screen:not(.ctrl-visible) .ctrl-bar { opacity: 0; }
-    .video-wrapper:fullscreen:hover .ctrl-bar,
-    .video-wrapper:-webkit-full-screen:hover .ctrl-bar,
     .video-wrapper:fullscreen.ctrl-visible .ctrl-bar,
     .video-wrapper:-webkit-full-screen.ctrl-visible .ctrl-bar { opacity: 1; }
 
@@ -787,17 +806,42 @@
     }
     .pip-return-btn:active { transform: scale(.97); }
 
-    /* ── UI Layer: when settings open, intercept all non-settings clicks ── */
-    .settings-layer {
-      display: none;
-      position: fixed;
-      inset: 0;
-      z-index: 9990;
-      background: transparent;
-      cursor: default;
-      touch-action: none;
+    /* ── External Settings Button (sits on .player-card, OUTSIDE video) ── */
+    /* This resolves the portrait touch-blocking issue: the button is never
+       a child of the video element or its stacking context.             */
+    .external-settings-btn {
+      position: absolute;
+      /* Aligned to the bottom-right corner of the player card,
+         matching where the ctrl-bar's settings button used to sit */
+      bottom: 16px;
+      right: 56px;   /* leave room for fullscreen btn in ctrl-bar */
+      z-index: 50;   /* above video (1) and ctrl-bar (15), below settings popup (9999) */
+      width: 36px; height: 36px;
+      border-radius: 9px;
+      background: rgba(0,0,0,.62);
+      border: 1px solid rgba(255,255,255,.18);
+      color: rgba(255,255,255,.9);
+      font-size: .92rem;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: background .18s ease, transform .15s cubic-bezier(.34,1.56,.64,1), opacity .25s ease;
+      pointer-events: auto;
+      touch-action: manipulation;
+      /* Hidden when controls not visible; shown via ctrl-visible on wrapper
+         OR always visible — we keep it always visible for accessibility */
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
     }
-    .settings-layer.active { display: block; }
+    .external-settings-btn:hover {
+      background: rgba(102,126,234,.38);
+      color: #fff;
+      transform: scale(1.08);
+    }
+    .external-settings-btn:active { transform: scale(.9); }
+    .external-settings-btn.active { color: #667eea; background: rgba(102,126,234,.28); }
+
+    /* On non-video or audio pages, hide the external button */
+    .player-card:not(.has-video) .external-settings-btn { display: none; }
 
     /* ── Settings popup — YouTube-style premium redesign ─────────
        Desktop: absolute bottom-right above ctrl-bar.
@@ -1538,79 +1582,130 @@
     </div>
 
     <!-- ── Player Card ───────────────────────────────────────── -->
-    <div class="player-card" id="player-card">
+    <div class="player-card {% if file_type == 'video' and browser_playable %}has-video{% endif %}" id="player-card">
       {% if file_type == 'video' %}
 
         {% if browser_playable %}
         <!-- ── Native video player ───────────────────────────── -->
-        <div class="video-wrapper" id="video-wrapper">
+        <!-- .player-container groups the video-wrapper + external settings btn -->
+        <div class="player-container" id="player-container">
 
-          <!-- PiP overlay banner -->
-          <div class="pip-banner" id="pip-banner">
-            <div class="pip-inner">
-              <div class="pip-banner-icon">
-                <i class="fa-solid fa-tv"></i>
+          <div class="video-wrapper" id="video-wrapper">
+
+            <!-- PiP overlay banner -->
+            <div class="pip-banner" id="pip-banner">
+              <div class="pip-inner">
+                <div class="pip-banner-icon">
+                  <i class="fa-solid fa-tv"></i>
+                </div>
+                <div class="pip-banner-text">
+                  <h3>Playing in Picture‑in‑Picture</h3>
+                  <p>Video is floating in a separate window</p>
+                </div>
+                <button class="pip-return-btn" onclick="exitPiP()" aria-label="Return to player">
+                  <i class="fa-solid fa-arrow-left"></i>
+                  Back to Player
+                </button>
               </div>
-              <div class="pip-banner-text">
-                <h3>Playing in Picture‑in‑Picture</h3>
-                <p>Video is floating in a separate window</p>
+            </div>
+
+            <!-- In-player error overlay (shown on MediaError) -->
+            <div class="player-error-overlay" id="player-error-overlay">
+              <div class="player-error-inner">
+                <div class="player-error-icon"><i class="fa-solid fa-circle-exclamation"></i></div>
+                <div class="player-error-title" id="player-error-title">Playback Error</div>
+                <div class="player-error-msg" id="player-error-msg"></div>
+                <div class="player-error-btns">
+                  <button class="player-error-btn primary" onclick="retryPlayback()">
+                    <i class="fa-solid fa-rotate-right"></i> Retry
+                  </button>
+                  <button class="player-error-btn secondary" onclick="lazyDownload()">
+                    <i class="fa-solid fa-cloud-arrow-down"></i> Download Instead
+                  </button>
+                </div>
               </div>
-              <button class="pip-return-btn" onclick="exitPiP()" aria-label="Return to player">
-                <i class="fa-solid fa-arrow-left"></i>
-                Back to Player
+            </div>
+
+            <!-- Video element.
+                 preload="metadata" → fetches only headers/duration; avoids wasting
+                                      bandwidth before the user presses play, and
+                                      lets the browser start rendering faster.
+                 crossorigin        → enables CORS caching by shared proxies.
+                 src on <video>     → cleaner range-request handling vs <source>. -->
+            <video id="player"
+                   playsinline
+                   webkit-playsinline
+                   preload="metadata"
+                   crossorigin="anonymous"
+                   src="{{ stream_url }}">
+            </video>
+
+            <!-- Big play button (shown when paused) -->
+            <button class="big-play hidden" id="big-play" onclick="togglePlay()" aria-label="Play/Pause">
+              <i class="fa-solid fa-play" id="big-play-icon"></i>
+            </button>
+
+            <!-- Seek progress row -->
+            <div class="progress-row" id="progress-row">
+              <div class="progress-track" id="progress-track">
+                <div class="progress-buffered" id="progress-buffered" style="width:0%"></div>
+                <div class="progress-fill" id="progress-fill" style="width:0%"></div>
+                <div class="progress-thumb" id="progress-thumb"></div>
+              </div>
+            </div>
+
+            <!-- ── Controls bar (inside video-wrapper for fullscreen compat) ── -->
+            <div class="ctrl-bar" id="ctrl-bar">
+
+              <!-- Play / Pause -->
+              <button class="ctrl-btn play-btn" id="play-btn" onclick="togglePlay()" title="Play/Pause (Space)">
+                <i class="fa-solid fa-play" id="play-icon"></i>
               </button>
-            </div>
-          </div>
 
-          <!-- In-player error overlay (shown on MediaError) -->
-          <div class="player-error-overlay" id="player-error-overlay">
-            <div class="player-error-inner">
-              <div class="player-error-icon"><i class="fa-solid fa-circle-exclamation"></i></div>
-              <div class="player-error-title" id="player-error-title">Playback Error</div>
-              <div class="player-error-msg" id="player-error-msg"></div>
-              <div class="player-error-btns">
-                <button class="player-error-btn primary" onclick="retryPlayback()">
-                  <i class="fa-solid fa-rotate-right"></i> Retry
-                </button>
-                <button class="player-error-btn secondary" onclick="lazyDownload()">
-                  <i class="fa-solid fa-cloud-arrow-down"></i> Download Instead
+              <!-- Time display -->
+              <span class="ctrl-time" id="ctrl-time">0:00 / 0:00</span>
+
+              <div class="ctrl-spacer"></div>
+
+              <!-- Volume / Mute — mute toggle only (no slider) -->
+              <div class="vol-group">
+                <button class="ctrl-btn" id="mute-btn" onclick="toggleMute()" title="Mute/Unmute (M)">
+                  <i class="fa-solid fa-volume-high" id="mute-icon"></i>
                 </button>
               </div>
-            </div>
-          </div>
 
-          <!-- Video element.
-               preload="metadata" → fetches only headers/duration; avoids wasting
-                                    bandwidth before the user presses play, and
-                                    lets the browser start rendering faster.
-               crossorigin        → enables CORS caching by shared proxies.
-               src on <video>     → cleaner range-request handling vs <source>. -->
-          <video id="player"
-                 playsinline
-                 webkit-playsinline
-                 preload="metadata"
-                 crossorigin="anonymous"
-                 src="{{ stream_url }}">
-          </video>
+              <div class="ctrl-sep"></div>
 
-          <!-- Big play button (shown when paused) -->
-          <button class="big-play hidden" id="big-play" onclick="togglePlay()" aria-label="Play/Pause">
-            <i class="fa-solid fa-play" id="big-play-icon"></i>
+              <!-- PiP -->
+              <button class="ctrl-btn" id="pip-btn" onclick="togglePiP()" title="Picture-in-Picture (P)">
+                <i class="fa-solid fa-window-restore"></i>
+              </button>
+
+              <!-- Fullscreen -->
+              <button class="ctrl-btn" id="fs-btn" onclick="toggleFullscreen()" title="Fullscreen (F)">
+                <i class="fa-solid fa-expand" id="fs-icon"></i>
+              </button>
+
+            </div><!-- /ctrl-bar -->
+
+          </div><!-- /video-wrapper -->
+
+          <!-- ── External Settings Button ─────────────────────────────
+               OUTSIDE the video element — lives on .player-container so
+               it is never blocked by HTML5 video touch-event capture.
+               z-index: 50 ensures it floats above the ctrl-bar (z-index 15)
+               and the video (z-index 1) in ALL orientations.
+          ──────────────────────────────────────────────────────────── -->
+          <button class="external-settings-btn" id="settings-btn"
+                  onclick="toggleSettings(event)"
+                  title="Settings (S)"
+                  aria-label="Player Settings"
+                  aria-haspopup="dialog">
+            <i class="fa-solid fa-gear"></i>
           </button>
 
-          <!-- Seek progress row -->
-          <div class="progress-row" id="progress-row">
-            <div class="progress-track" id="progress-track">
-              <div class="progress-buffered" id="progress-buffered" style="width:0%"></div>
-              <div class="progress-fill" id="progress-fill" style="width:0%"></div>
-              <div class="progress-thumb" id="progress-thumb"></div>
-            </div>
-          </div>
-
-          <!-- UI layer: blocks all non-settings interactions when menu is open (position:fixed in CSS) -->
-          <div class="settings-layer" id="settings-layer" onclick="closeSettings()"></div>
-
-          <!-- ── Settings popup (position:fixed → escapes stacking context, works on mobile) ── -->
+          <!-- ── Settings popup (position:fixed → escapes stacking context,
+               works in both portrait and landscape on touch devices) ── -->
           <div class="settings-popup" id="settings-popup" role="dialog" aria-label="Player Settings">
             <div class="settings-drag-handle"></div>
 
@@ -1729,47 +1824,7 @@
             </div><!-- /settings-panels -->
           </div><!-- /settings-popup -->
 
-          <!-- ── Controls bar ──────────────────────────────────── -->
-          <div class="ctrl-bar" id="ctrl-bar">
-
-            <!-- Play / Pause -->
-            <button class="ctrl-btn play-btn" id="play-btn" onclick="togglePlay()" title="Play/Pause (Space)">
-              <i class="fa-solid fa-play" id="play-icon"></i>
-            </button>
-
-            <!-- Time display -->
-            <span class="ctrl-time" id="ctrl-time">0:00 / 0:00</span>
-
-            <div class="ctrl-spacer"></div>
-
-            <!-- Volume / Mute — mute toggle only (no slider) -->
-            <div class="vol-group">
-              <button class="ctrl-btn" id="mute-btn" onclick="toggleMute()" title="Mute/Unmute (M)">
-                <i class="fa-solid fa-volume-high" id="mute-icon"></i>
-              </button>
-            </div>
-
-            <div class="ctrl-sep"></div>
-
-            <!-- Settings — z-index and pointer-events are explicitly set
-                 on .ctrl-btn so this button can NEVER be blocked by the overlay -->
-            <button class="ctrl-btn" id="settings-btn" onclick="toggleSettings(event)" title="Settings (S)">
-              <i class="fa-solid fa-gear"></i>
-            </button>
-
-            <!-- PiP -->
-            <button class="ctrl-btn" id="pip-btn" onclick="togglePiP()" title="Picture-in-Picture (P)">
-              <i class="fa-solid fa-window-restore"></i>
-            </button>
-
-            <!-- Fullscreen -->
-            <button class="ctrl-btn" id="fs-btn" onclick="toggleFullscreen()" title="Fullscreen (F)">
-              <i class="fa-solid fa-expand" id="fs-icon"></i>
-            </button>
-
-          </div>
-
-        </div><!-- /video-wrapper -->
+        </div><!-- /player-container -->
 
         {% else %}
         <!-- ── Unsupported format banner ──────────────────────── -->
@@ -2049,13 +2104,20 @@
       togglePlay();
     });
 
-    /* Touch: show controls on any tap inside wrapper */
+    /* Touch: show controls on any tap inside wrapper
+       — external settings button is OUTSIDE wrapper so it never
+         prevents controls from toggling properly */
     if (wrapper) {
       wrapper.addEventListener('touchend', (e) => {
         if (settingsOpen) return;
         const target = e.target;
-        const isCtrlBtn = target.closest('.ctrl-btn') || target.closest('.progress-row') || target.closest('.big-play');
-        if (!isCtrlBtn && !_ctrlVisible) {
+        // Only skip toggle if the tap was on a dedicated control element
+        const isCtrlEl = (
+          target.closest('.ctrl-btn')    ||
+          target.closest('.progress-row') ||
+          target.closest('.big-play')
+        );
+        if (!isCtrlEl && !_ctrlVisible) {
           showControls();
           e.preventDefault();
         }
@@ -2115,36 +2177,72 @@
     video.addEventListener('enterpictureinpicture', onEnterPiP);
     video.addEventListener('leavepictureinpicture',  onLeavePiP);
 
-    /* Auto-hide controls (touch-friendly) */
+    /* ── Auto-hide controls — 3 second inactivity timer ────────────────
+       Implements streaming-platform style UX:
+         • Controls appear  : on tap / mousemove
+         • Controls hide    : 3 seconds after last interaction (while playing)
+         • Controls stay    : while paused or settings menu is open
+         • External settings button inherits the ctrl-visible state on desktop
+           (it's always pointer-accessible on mobile, never blocked by video)
+    ────────────────────────────────────────────────────────────────── */
     let hideTimer;
     let _ctrlVisible = false;
+    const AUTO_HIDE_DELAY = 3000; // ms — matches modern streaming UX
 
     const showControls = () => {
       if (wrapper) wrapper.classList.add('ctrl-visible');
       _ctrlVisible = true;
       clearTimeout(hideTimer);
-      hideTimer = setTimeout(hideControlsIfPlaying, 3200);
+      // Restart 3-second countdown only while playing
+      if (video && !video.paused) {
+        hideTimer = setTimeout(hideControlsIfPlaying, AUTO_HIDE_DELAY);
+      }
     };
 
     const hideControlsIfPlaying = () => {
+      // Don't hide while: paused, buffering, settings open
       if (video && !video.paused && !settingsOpen) {
         if (wrapper) wrapper.classList.remove('ctrl-visible');
         _ctrlVisible = false;
       } else {
+        // Re-check in 1 second (video may resume shortly)
         hideTimer = setTimeout(hideControlsIfPlaying, 1000);
       }
     };
 
+    // Show controls immediately when video starts playing
+    video.addEventListener('play', () => {
+      showControls();
+    });
+
+    // Keep controls visible while paused
+    video.addEventListener('pause', () => {
+      clearTimeout(hideTimer);
+      showControls();
+    });
+
+    // Desktop: mouse movement inside wrapper shows controls
     if (wrapper) {
-      wrapper.addEventListener('mousemove',  showControls);
-      wrapper.addEventListener('touchstart', (e) => {
+      wrapper.addEventListener('mousemove', () => {
+        showControls();
+      });
+      // Desktop: mouse leaves wrapper → hide after 1.5s if playing
+      wrapper.addEventListener('mouseleave', () => {
+        if (video && !video.paused && !settingsOpen) {
+          clearTimeout(hideTimer);
+          hideTimer = setTimeout(hideControlsIfPlaying, 1500);
+        }
+      });
+      // Touch: any touchstart on the wrapper shows controls
+      wrapper.addEventListener('touchstart', () => {
         showControls();
       }, { passive: true });
     }
 
-    /* Hide controls when tapping outside player */
+    // Touch: tapping outside the player-container hides controls
+    const playerContainer = document.getElementById('player-container');
     document.addEventListener('touchstart', (e) => {
-      if (wrapper && !wrapper.contains(e.target) && !settingsOpen) {
+      if (playerContainer && !playerContainer.contains(e.target) && !settingsOpen) {
         if (wrapper) wrapper.classList.remove('ctrl-visible');
         _ctrlVisible = false;
         clearTimeout(hideTimer);
@@ -2363,8 +2461,10 @@
   }
 
   // ── Settings Popup ─────────────────────────────────────────────────────────
-  // ctrl-bar z-index (2001) > overlay (1999) so the settings button is always
-  // clickable on mobile. The popup uses z-index 2002 on mobile (see CSS).
+  // Architecture: the settings button is an EXTERNAL element on .player-container,
+  // NOT inside the video element. This prevents HTML5 video touch-event
+  // interception in portrait mode on iOS and Android.
+  // The popup uses position:fixed (z-index:9999) to escape all stacking contexts.
   let settingsOpen   = false;
   let activeSubPanel = null;   // 'speed' | 'audio' | 'subs' | null
 
@@ -2376,38 +2476,34 @@
   function openSettings() {
     const popup   = document.getElementById('settings-popup');
     const overlay = document.getElementById('settings-overlay');
-    const layer   = document.getElementById('settings-layer');
     if (popup)   popup.classList.add('open');
     if (overlay) overlay.classList.add('active');
-    if (layer)   layer.classList.add('active');
     settingsOpen = true;
     _showPanel('main');
     activeSubPanel = null;
     const btn = document.getElementById('settings-btn');
     if (btn) btn.classList.add('active');
 
-    // On desktop: position popup above settings button
+    // Desktop: anchor popup above the external settings button
     if (popup && window.innerWidth > 600 && btn) {
       const btnRect = btn.getBoundingClientRect();
-      popup.style.bottom  = (window.innerHeight - btnRect.top + 8) + 'px';
-      popup.style.right   = (window.innerWidth - btnRect.right + 0) + 'px';
-      popup.style.top     = 'auto';
-      popup.style.left    = 'auto';
+      popup.style.bottom = (window.innerHeight - btnRect.top + 8) + 'px';
+      popup.style.right  = (window.innerWidth  - btnRect.right)   + 'px';
+      popup.style.top    = 'auto';
+      popup.style.left   = 'auto';
     }
   }
 
   function closeSettings() {
     const popup   = document.getElementById('settings-popup');
     const overlay = document.getElementById('settings-overlay');
-    const layer   = document.getElementById('settings-layer');
     if (popup)   popup.classList.remove('open');
     if (overlay) overlay.classList.remove('active');
-    if (layer)   layer.classList.remove('active');
     settingsOpen = false;
     activeSubPanel = null;
     const btn = document.getElementById('settings-btn');
     if (btn) btn.classList.remove('active');
-    // Reset to main panel state after close
+    // Reset to main panel state after close animation finishes
     setTimeout(() => { if (!settingsOpen) _showPanel('main'); }, 260);
   }
 

@@ -523,14 +523,167 @@
     .footer-note a { color: var(--footer-link); text-decoration: none; font-weight: 700; transition: color .2s; }
     .footer-note a:hover { color: var(--footer-hover); }
 
-    /* ── Spinner ─────────────────────────────────────────────── */
-    .spin { animation: rotate 1s linear infinite; }
-    @keyframes rotate { to { transform: rotate(360deg); } }
+    /* ── Bandwidth Cycle Block ───────────────────────────────── */
+    .bw-cycle-block {
+      background: rgba(79,172,254,.06);
+      border: 1px solid rgba(79,172,254,.18);
+      border-radius: 18px;
+      padding: 18px 20px;
+      margin-bottom: 22px;
+    }
+    .bw-cycle-title {
+      display: flex; align-items: center; gap: 8px;
+      font-size: .75rem; font-weight: 700;
+      text-transform: uppercase; letter-spacing: .8px;
+      color: #4facfe;
+      margin-bottom: 14px;
+    }
+    .bw-cycle-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+      gap: 12px;
+    }
+    .bw-cycle-item {
+      display: flex; flex-direction: column; gap: 3px;
+    }
+    .bw-cycle-label {
+      font-size: .62rem;
+      text-transform: uppercase; letter-spacing: .07em;
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+    .bw-cycle-value {
+      font-size: .9rem; font-weight: 800;
+      color: var(--text-primary);
+    }
+    .bw-cycle-value.highlight { color: #4facfe; }
+    .bw-cycle-value.warn      { color: #f6d365; }
+
+    /* ── Analytics Section ───────────────────────────────────── */
+    .analytics-block { margin-top: 28px; }
+    .analytics-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 14px; flex-wrap: wrap; gap: 10px;
+    }
+    .analytics-title {
+      font-size: .75rem; font-weight: 700;
+      text-transform: uppercase; letter-spacing: .8px;
+      color: var(--text-muted);
+      display: flex; align-items: center; gap: 8px;
+    }
+    .analytics-title::after { content: ''; flex: 1; height: 1px; background: var(--section-line); }
+
+    /* Range selector tabs */
+    .range-tabs {
+      display: flex; gap: 6px; flex-wrap: wrap;
+    }
+    .range-tab {
+      padding: 6px 14px;
+      border-radius: 10px;
+      border: 1px solid var(--tab-border);
+      background: var(--tab-bg);
+      color: var(--text-label);
+      font-family: 'Poppins', sans-serif;
+      font-size: .74rem; font-weight: 700;
+      cursor: pointer;
+      transition: all .22s cubic-bezier(.34,1.56,.64,1);
+    }
+    .range-tab:hover { background: var(--tab-hover-bg); color: var(--text-primary); }
+    .range-tab.active {
+      background: linear-gradient(135deg, #4facfe, #00f2fe);
+      color: #fff;
+      border-color: transparent;
+      box-shadow: 0 4px 14px rgba(79,172,254,.36);
+    }
+
+    /* Custom date range inputs */
+    .custom-range-row {
+      display: none;
+      align-items: center; gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 12px;
+    }
+    .custom-range-row.visible { display: flex; }
+    .custom-range-row label {
+      font-size: .76rem; color: var(--text-label); font-weight: 600;
+      white-space: nowrap;
+    }
+    .custom-date-input {
+      border: 1px solid var(--btn-ghost-border);
+      background: var(--btn-ghost-bg);
+      color: var(--text-primary);
+      border-radius: 9px;
+      padding: 7px 12px;
+      font-family: 'Poppins', sans-serif;
+      font-size: .78rem;
+      outline: none;
+      cursor: pointer;
+      transition: border-color .2s;
+    }
+    .custom-date-input:focus { border-color: #4facfe; }
+    .btn-query {
+      display: inline-flex; align-items: center; gap: 7px;
+      padding: 8px 18px; border-radius: 10px;
+      background: linear-gradient(135deg, #4facfe, #00f2fe);
+      border: none; color: #fff;
+      font-family: 'Poppins', sans-serif;
+      font-size: .78rem; font-weight: 700;
+      cursor: pointer;
+      transition: all .22s cubic-bezier(.34,1.56,.64,1);
+      box-shadow: 0 4px 14px rgba(79,172,254,.3);
+    }
+    .btn-query:hover { transform: translateY(-2px); box-shadow: 0 8px 22px rgba(79,172,254,.48); }
+
+    /* Analytics result card */
+    .analytics-result {
+      background: var(--stat-bg);
+      border: 1px solid var(--stat-border);
+      border-radius: 16px;
+      padding: 20px 22px;
+      margin-top: 16px;
+      display: flex; align-items: center; gap: 16px;
+      flex-wrap: wrap;
+    }
+    .analytics-result-icon {
+      width: 48px; height: 48px;
+      border-radius: 14px;
+      background: linear-gradient(135deg, #4facfe, #00f2fe);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.2rem; color: #fff;
+      box-shadow: 0 6px 18px rgba(79,172,254,.3);
+      flex-shrink: 0;
+    }
+    .analytics-result-text { flex: 1; min-width: 0; }
+    .analytics-result-label {
+      font-size: .7rem; color: var(--text-muted);
+      text-transform: uppercase; letter-spacing: .07em;
+      font-weight: 600; margin-bottom: 3px;
+    }
+    .analytics-result-value {
+      font-size: 1.45rem; font-weight: 800;
+      color: var(--text-primary);
+      line-height: 1;
+    }
+    .analytics-result-sub {
+      font-size: .75rem; color: var(--text-secondary);
+      margin-top: 4px;
+    }
+    .analytics-loading {
+      display: none;
+      align-items: center; gap: 8px;
+      font-size: .82rem; color: var(--text-muted);
+      padding: 14px 0;
+    }
+    .analytics-loading.visible { display: flex; }
 
     /* ── Scrollbar ───────────────────────────────────────────── */
     ::-webkit-scrollbar { width: 5px; }
     ::-webkit-scrollbar-track { background: var(--bg-base); }
     ::-webkit-scrollbar-thumb { background: rgba(102,126,234,.28); border-radius: 3px; }
+
+    /* ── Spin animation (used by refresh icons and loading spinner) ── */
+    .spin { animation: spin-rotate 1s linear infinite; display: inline-block; }
+    @keyframes spin-rotate { to { transform: rotate(360deg); } }
 
     /* ── Responsive ─────────────────────────────────────────── */
     @media (max-width: 600px) {
@@ -670,6 +823,31 @@
       </div>
       <div class="panel-body">
 
+        <!-- ── 30-Day Cycle Block ─────────────────────────────── -->
+        <div class="bw-cycle-block" id="bw-cycle-block">
+          <div class="bw-cycle-title">
+            <i class="fa-solid fa-rotate"></i> Bandwidth Cycle (30-Day Window)
+          </div>
+          <div class="bw-cycle-grid">
+            <div class="bw-cycle-item">
+              <span class="bw-cycle-label">Cycle Started</span>
+              <span class="bw-cycle-value" id="cycle-start">{{ cycle_start }}</span>
+            </div>
+            <div class="bw-cycle-item">
+              <span class="bw-cycle-label">Next Reset</span>
+              <span class="bw-cycle-value warn" id="cycle-next-reset">{{ cycle_next_reset }}</span>
+            </div>
+            <div class="bw-cycle-item">
+              <span class="bw-cycle-label">Time Remaining</span>
+              <span class="bw-cycle-value highlight" id="cycle-days-left">{{ cycle_days_left }}</span>
+            </div>
+            <div class="bw-cycle-item">
+              <span class="bw-cycle-label">Cycle Used</span>
+              <span class="bw-cycle-value" id="cycle-used">{{ cycle_used }}</span>
+            </div>
+          </div>
+        </div>
+
         <div class="info-section">
           <div class="info-section-title"><i class="fa-solid fa-circle-info"></i> Current Status</div>
           <div class="info-row">
@@ -725,6 +903,47 @@
             <span id="bw-meta-limit">{{ bw_limit }} total</span>
           </div>
         </div>
+
+        <!-- ── Bandwidth Analytics ────────────────────────────── -->
+        <div class="analytics-block">
+          <div class="analytics-header">
+            <div class="analytics-title"><i class="fa-solid fa-chart-bar"></i> Analytics</div>
+            <div class="range-tabs">
+              <button class="range-tab active" data-range="7d"    onclick="selectRange(this)">Last 7 Days</button>
+              <button class="range-tab"        data-range="30d"   onclick="selectRange(this)">Last 30 Days</button>
+              <button class="range-tab"        data-range="custom" onclick="selectRange(this)">Custom</button>
+            </div>
+          </div>
+
+          <!-- Custom date range inputs (hidden unless "Custom" tab is active) -->
+          <div class="custom-range-row" id="custom-range-row">
+            <label for="range-from">From:</label>
+            <input type="date" id="range-from" class="custom-date-input" aria-label="From date">
+            <label for="range-to">To:</label>
+            <input type="date" id="range-to"   class="custom-date-input" aria-label="To date">
+            <button class="btn-query" onclick="runAnalytics()">
+              <i class="fa-solid fa-magnifying-glass"></i> Query
+            </button>
+          </div>
+
+          <!-- Loading indicator -->
+          <div class="analytics-loading" id="analytics-loading">
+            <i class="fa-solid fa-spinner spin"></i> Loading analytics…
+          </div>
+
+          <!-- Result card -->
+          <div class="analytics-result" id="analytics-result">
+            <div class="analytics-result-icon">
+              <i class="fa-solid fa-chart-line"></i>
+            </div>
+            <div class="analytics-result-text">
+              <div class="analytics-result-label" id="analytics-result-label">Last 7 Days</div>
+              <div class="analytics-result-value" id="analytics-result-value">—</div>
+              <div class="analytics-result-sub"   id="analytics-result-sub">Select a range to view usage</div>
+            </div>
+          </div>
+        </div>
+        <!-- /analytics-block -->
 
         <div class="btn-row">
           <a href="/" class="btn btn-primary"><i class="fa-solid fa-house"></i> Home</a>
@@ -931,10 +1150,10 @@
       if (!r.ok) throw new Error(r.statusText);
       const d = await r.json();
       const f = d.formatted || {};
-      document.getElementById('bw-limit').textContent      = f.limit      ?? '—';
-      document.getElementById('bw-used').textContent       = f.total_bandwidth ?? '—';
-      document.getElementById('bw-today').textContent      = f.today_bandwidth ?? '—';
-      document.getElementById('bw-remaining').textContent  = f.remaining   ?? '—';
+      document.getElementById('bw-limit').textContent      = f.limit            ?? '—';
+      document.getElementById('bw-used').textContent       = f.total_bandwidth  ?? '—';
+      document.getElementById('bw-today').textContent      = f.today_bandwidth  ?? '—';
+      document.getElementById('bw-remaining').textContent  = f.remaining        ?? '—';
       const pct = d.percentage ?? 0;
       document.getElementById('bw-pct').textContent        = pct + '%';
       document.getElementById('bw-meta-used').textContent  = (f.total_bandwidth ?? '—') + ' used';
@@ -944,11 +1163,98 @@
       bar.className = 'bw-bar-fill' + (pct > 90 ? ' crit' : pct > 70 ? ' warn' : '');
       const mode = document.getElementById('bw-mode-badge');
       if (mode) {
-        mode.className = 'badge ' + (d.bandwidth_mode ? 'badge-ok' : 'badge-error');
+        mode.className   = 'badge ' + (d.bandwidth_mode ? 'badge-ok' : 'badge-error');
         mode.textContent = d.bandwidth_mode ? 'Active' : 'Inactive';
       }
+      // Update 30-day cycle block
+      const cycleStart     = document.getElementById('cycle-start');
+      const cycleReset     = document.getElementById('cycle-next-reset');
+      const cycleDaysLeft  = document.getElementById('cycle-days-left');
+      const cycleUsed      = document.getElementById('cycle-used');
+      if (cycleStart)    cycleStart.textContent    = d.bandwidth_cycle_start      ?? '—';
+      if (cycleReset)    cycleReset.textContent    = d.bandwidth_cycle_next_reset ?? '—';
+      if (cycleDaysLeft) cycleDaysLeft.textContent = d.cycle_days_left            ?? '—';
+      if (cycleUsed)     cycleUsed.textContent     = f.cycle_used                 ?? '—';
     } catch(e) { console.warn('bw refresh failed:', e); }
     stopSpin(ico);
+  }
+
+  // ── Bandwidth Analytics ────────────────────────────────────
+  let _activeRange = '7d';
+
+  function selectRange(btn) {
+    document.querySelectorAll('.range-tab').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    _activeRange = btn.dataset.range;
+
+    const customRow = document.getElementById('custom-range-row');
+    if (_activeRange === 'custom') {
+      customRow.classList.add('visible');
+      // Pre-fill with sensible defaults: last 7 days
+      const today   = new Date().toISOString().slice(0, 10);
+      const weekAgo = new Date(Date.now() - 6 * 86400000).toISOString().slice(0, 10);
+      const fromEl  = document.getElementById('range-from');
+      const toEl    = document.getElementById('range-to');
+      if (fromEl && !fromEl.value) fromEl.value = weekAgo;
+      if (toEl   && !toEl.value)   toEl.value   = today;
+    } else {
+      customRow.classList.remove('visible');
+      // Auto-run for preset ranges
+      runAnalytics();
+    }
+  }
+
+  async function runAnalytics() {
+    const loading = document.getElementById('analytics-loading');
+    const result  = document.getElementById('analytics-result');
+    const label   = document.getElementById('analytics-result-label');
+    const value   = document.getElementById('analytics-result-value');
+    const sub     = document.getElementById('analytics-result-sub');
+
+    if (loading) loading.classList.add('visible');
+    if (result)  result.style.display = 'none';
+
+    try {
+      let url = `/api/bandwidth/analytics?range=${_activeRange}`;
+      let labelText = 'Last 7 Days';
+
+      if (_activeRange === 'custom') {
+        const from = document.getElementById('range-from')?.value;
+        const to   = document.getElementById('range-to')?.value;
+        if (!from) {
+          if (loading) loading.classList.remove('visible');
+          if (result)  result.style.display = '';
+          if (value)   value.textContent = '0 B';
+          if (sub)     sub.textContent   = 'Please select a start date';
+          return;
+        }
+        url       += `&from=${from}`;
+        if (to) url += `&to=${to}`;
+        labelText = to ? `${from} → ${to}` : `From ${from}`;
+      } else if (_activeRange === '30d') {
+        labelText = 'Last 30 Days';
+      }
+
+      const r = await fetch(url);
+      if (!r.ok) throw new Error(r.statusText);
+      const d = await r.json();
+
+      if (label) label.textContent = labelText;
+      if (value) value.textContent = d.formatted ?? '0 B';
+      if (sub) {
+        const bytes = d.total_bytes ?? 0;
+        sub.textContent = bytes === 0
+          ? 'No bandwidth usage recorded for this period'
+          : `${d.total_bytes.toLocaleString()} bytes transferred`;
+      }
+    } catch(e) {
+      console.warn('analytics fetch failed:', e);
+      if (value) value.textContent = '0 B';
+      if (sub)   sub.textContent   = 'Failed to load data — check console';
+    }
+
+    if (loading) loading.classList.remove('visible');
+    if (result)  result.style.display = '';
   }
 
   // ── Health refresh ─────────────────────────────────────────
@@ -1012,8 +1318,11 @@
 
   // ── Auto-refresh every 30s ─────────────────────────────────
   refreshStats();
+  refreshBandwidth();
   setInterval(refreshStats,     30000);
   setInterval(refreshBandwidth, 30000);
+  // Load default analytics view (Last 7 Days) on page load
+  runAnalytics();
   // Always start health monitoring at page load so Live Streaming
   // Sessions is updated even before the Health tab is opened.
   startHealthUpdates();
