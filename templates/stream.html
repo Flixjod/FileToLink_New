@@ -523,13 +523,14 @@
     .player-error-btn.secondary:hover { background: rgba(255,255,255,.14); color: #fff; }
 
     /* ── Progress row ──────────────────────────────── */
+    /* z-index 9994 — below ctrl-bar (9995) but above video */
     .progress-row {
       position: absolute;
       bottom: 52px; left: 0; right: 0;
       padding: 0 12px;
       opacity: 0;
       transition: opacity .25s ease;
-      z-index: 12;
+      z-index: 9994;
       cursor: pointer;
     }
     .video-wrapper:hover .progress-row,
@@ -578,6 +579,7 @@
     .progress-track:hover .progress-thumb { opacity: 1; transform: translate(50%, -50%) scale(1.2); }
 
     /* ── Control bar ───────────────────────────────── */
+    /* z-index 9995 — above settings-layer (9990) so buttons are ALWAYS tappable */
     .ctrl-bar {
       position: absolute;
       bottom: 0; left: 0; right: 0;
@@ -588,7 +590,7 @@
       background: linear-gradient(transparent, rgba(0,0,0,.88));
       opacity: 0;
       transition: opacity .25s ease;
-      z-index: 15;
+      z-index: 9995;
       border-radius: 0 0 24px 24px;
       pointer-events: auto;
     }
@@ -608,6 +610,7 @@
     .video-wrapper:-webkit-full-screen.ctrl-visible .ctrl-bar { opacity: 1; }
 
     /* Individual control button */
+    /* z-index 9996 — always above ctrl-bar, settings-layer, and any overlay */
     .ctrl-btn {
       width: 36px; height: 36px;
       border-radius: 9px;
@@ -621,9 +624,10 @@
       flex-shrink: 0;
       position: relative;
       outline: none;
-      /* Ensure buttons are always on top of any sibling overlays */
-      z-index: 1;
+      z-index: 9996;
       pointer-events: auto;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
     }
     .ctrl-btn:hover {
       background: var(--ctrl-btn-hover);
@@ -788,6 +792,7 @@
     .pip-return-btn:active { transform: scale(.97); }
 
     /* ── UI Layer: when settings open, intercept all non-settings clicks ── */
+    /* z-index 9990 — above video (1) and ctrl-bar (15) but below popup (9999) */
     .settings-layer {
       display: none;
       position: fixed;
@@ -804,6 +809,7 @@
        Mobile: fixed bottom sheet with slide-up animation.
        Always uses fixed positioning to escape player stacking context.
     ────────────────────────────────────────────────────────── */
+    /* ── Settings popup — fixed, z-index 10000 to escape all layers ────── */
     .settings-popup {
       position: fixed;
       bottom: 70px;
@@ -815,7 +821,7 @@
       padding: 0;
       min-width: 290px;
       max-width: min(340px, calc(100vw - 24px));
-      z-index: 9999;
+      z-index: 10000;
       opacity: 0;
       transform: translateY(12px) scale(.96);
       pointer-events: none;
@@ -838,7 +844,7 @@
         transform: translateY(100%);
         max-height: 82vh;
         overflow: hidden;
-        z-index: 9999;
+        z-index: 10000;
         transition: opacity .25s ease, transform .3s cubic-bezier(.22,.61,.36,1);
         display: flex;
         flex-direction: column;
@@ -1252,12 +1258,14 @@
     .no-tracks { padding: 5px 12px 3px; font-size: .73rem; color: var(--text-muted); font-style: italic; }
 
     /* ── Settings Overlay (mobile backdrop) ────────── */
+    /* z-index 9993 — below ctrl-bar (9995) and popup (10000) */
+    /* but above video so backdrop dims the player correctly */
     .settings-overlay {
       display: none;
       position: fixed;
       inset: 0;
       background: rgba(0,0,0,.6);
-      z-index: 9991;
+      z-index: 9993;
       pointer-events: none;
     }
     .settings-overlay.active {
@@ -2363,13 +2371,19 @@
   }
 
   // ── Settings Popup ─────────────────────────────────────────────────────────
-  // ctrl-bar z-index (2001) > overlay (1999) so the settings button is always
-  // clickable on mobile. The popup uses z-index 2002 on mobile (see CSS).
+  // Layout z-index ladder:
+  //   video                  z-index: 1   (default)
+  //   progress-row           z-index: 9994
+  //   ctrl-bar               z-index: 9995  ← ALWAYS above settings-layer
+  //   ctrl-btn               z-index: 9996  ← ALWAYS tappable
+  //   settings-layer         z-index: 9990  ← transparent backdrop (blocks video click)
+  //   settings-overlay       z-index: 9993  ← dark backdrop (mobile only)
+  //   settings-popup         z-index: 10000 ← popup on top of everything
   let settingsOpen   = false;
   let activeSubPanel = null;   // 'speed' | 'audio' | 'subs' | null
 
   function toggleSettings(e) {
-    if (e) e.stopPropagation();
+    if (e) { e.stopPropagation(); e.preventDefault(); }
     settingsOpen ? closeSettings() : openSettings();
   }
 
@@ -2385,6 +2399,11 @@
     activeSubPanel = null;
     const btn = document.getElementById('settings-btn');
     if (btn) btn.classList.add('active');
+
+    // Disable video pointer-events while menu is open to prevent
+    // accidental play/pause taps passing through the overlay on mobile.
+    const vid = document.getElementById('player');
+    if (vid) vid.style.pointerEvents = 'none';
 
     // On desktop: position popup above settings button
     if (popup && window.innerWidth > 600 && btn) {
@@ -2407,6 +2426,11 @@
     activeSubPanel = null;
     const btn = document.getElementById('settings-btn');
     if (btn) btn.classList.remove('active');
+
+    // Restore video pointer-events
+    const vid = document.getElementById('player');
+    if (vid) vid.style.pointerEvents = '';
+
     // Reset to main panel state after close
     setTimeout(() => { if (!settingsOpen) _showPanel('main'); }, 260);
   }

@@ -532,6 +532,122 @@
     ::-webkit-scrollbar-track { background: var(--bg-base); }
     ::-webkit-scrollbar-thumb { background: rgba(102,126,234,.28); border-radius: 3px; }
 
+    /* ── Live BW indicator ───────────────────────────────── */
+    .live-bw-bar {
+      display: flex; align-items: center; gap: 12px;
+      padding: 14px 20px;
+      background: var(--stat-bg);
+      border: 1px solid var(--stat-border);
+      border-radius: 18px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+    .live-bw-dot {
+      width: 10px; height: 10px; border-radius: 50%;
+      background: #43e97b; flex-shrink: 0;
+      animation: live-pulse-bw 1.5s ease-in-out infinite;
+    }
+    @keyframes live-pulse-bw {
+      0%,100%{ transform:scale(1); opacity:1; }
+      50%    { transform:scale(1.8); opacity:.6; }
+    }
+    .live-bw-label       { color: var(--text-label); font-size: .84rem; flex: 1; }
+    .live-bw-value       { font-weight: 800; color: #43e97b; font-size: .92rem; }
+    .live-sessions-value { font-weight: 800; color: #4facfe; font-size: .92rem; }
+
+    /* ── BW Filter Tabs ──────────────────────────────────── */
+    .bw-filter-row {
+      display: flex; align-items: center; flex-wrap: wrap;
+      gap: 6px; margin-bottom: 18px;
+    }
+    .bw-filter-btn {
+      padding: 6px 14px; border-radius: 999px;
+      font-size: .75rem; font-weight: 700;
+      border: 1px solid var(--tab-border);
+      background: var(--tab-bg);
+      color: var(--text-label);
+      cursor: pointer;
+      font-family: 'Poppins', sans-serif;
+      transition: all .2s ease;
+    }
+    .bw-filter-btn:hover { background: var(--tab-hover-bg); color: var(--text-primary); }
+    .bw-filter-btn.active {
+      background: linear-gradient(135deg,#4facfe,#00f2fe);
+      color: #fff; border-color: transparent;
+      box-shadow: 0 4px 14px rgba(79,172,254,.35);
+    }
+    .bw-custom-range {
+      display: none; align-items: center; gap: 8px;
+      flex-wrap: wrap; margin-bottom: 14px;
+    }
+    .bw-custom-range.show { display: flex; }
+    .bw-date-input {
+      background: var(--stat-bg);
+      border: 1px solid var(--stat-border);
+      border-radius: 10px;
+      padding: 7px 12px;
+      color: var(--text-primary);
+      font-family: 'Poppins', sans-serif;
+      font-size: .8rem;
+      outline: none;
+      color-scheme: dark;
+    }
+    [data-theme="light"] .bw-date-input { color-scheme: light; }
+    .bw-date-input:focus { border-color: #4facfe; }
+
+    /* ── BW Analytics total display ──────────────────────── */
+    .bw-analytics-total { text-align: center; padding: 20px 0 14px; }
+    .bw-analytics-total .big-val {
+      font-size: 2.2rem; font-weight: 900;
+      background: linear-gradient(135deg, #4facfe, #00f2fe);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      line-height: 1.1;
+    }
+    .bw-analytics-total .big-label { font-size: .78rem; color: var(--text-label); margin-top: 4px; }
+
+    /* ── Daily chart (CSS bar chart) ─────────────────────── */
+    .bw-chart { margin: 14px 0 20px; }
+    .bw-chart-title {
+      font-size: .72rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .8px; color: var(--text-muted); margin-bottom: 10px;
+    }
+    .bw-chart-bars { display: flex; align-items: flex-end; gap: 4px; height: 80px; }
+    .bw-chart-col  { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; }
+    .bw-chart-bar  {
+      width: 100%; border-radius: 4px 4px 0 0;
+      background: linear-gradient(180deg, #4facfe, #00f2fe);
+      min-height: 2px; transition: height .4s ease;
+    }
+    .bw-chart-date {
+      font-size: .5rem; color: var(--text-muted);
+      transform: rotate(-45deg); white-space: nowrap;
+      overflow: hidden; max-width: 28px;
+    }
+
+    /* ── BW Cycle card ───────────────────────────────────── */
+    .cycle-card {
+      background: linear-gradient(135deg, rgba(79,172,254,.1), rgba(0,242,254,.07));
+      border: 1px solid rgba(79,172,254,.28);
+      border-radius: 18px; padding: 18px 22px; margin-bottom: 20px;
+    }
+    .cycle-card-header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+    .cycle-card-icon {
+      width: 36px; height: 36px; border-radius: 11px;
+      background: linear-gradient(135deg,#4facfe,#00f2fe);
+      display: flex; align-items: center; justify-content: center;
+      font-size: .9rem; color: #fff; flex-shrink: 0;
+    }
+    .cycle-card-title { font-size: .9rem; font-weight: 800; color: var(--text-primary); }
+    .cycle-card-sub   { font-size: .75rem; color: var(--text-label); }
+    .cycle-stats-row  { display: flex; gap: 16px; flex-wrap: wrap; }
+    .cycle-stat       { flex: 1; min-width: 80px; }
+    .cycle-stat .cs-val { font-size: 1.1rem; font-weight: 800; color: #4facfe; }
+    .cycle-stat .cs-lbl {
+      font-size: .68rem; color: var(--text-muted);
+      text-transform: uppercase; letter-spacing: .5px; margin-top: 2px;
+    }
+
     /* ── Responsive ─────────────────────────────────────────── */
     @media (max-width: 600px) {
       .panel-header, .panel-body { padding: 20px 18px; }
@@ -540,6 +656,8 @@
       .stats-grid { grid-template-columns: repeat(2, 1fr); }
       .btn-row { flex-direction: column; align-items: stretch; }
       .btn { justify-content: center; }
+      .bw-chart-date { display: none; }
+      .bw-chart-bars { gap: 2px; }
     }
   </style>
 </head>
@@ -662,14 +780,91 @@
           <div class="panel-title-icon icon-bw">
             <i class="fa-solid fa-satellite-dish"></i>
           </div>
-          <div>
-            <h2>Bandwidth Info</h2>
-            <p>Data transfer overview</p>
+          <div style="flex:1;min-width:0;">
+            <h2>Bandwidth Analytics</h2>
+            <p>Live tracking · date-range filters</p>
+          </div>
+          <div class="live-indicator" style="flex-shrink:0;">
+            <span class="live-dot"></span> Live
           </div>
         </div>
       </div>
       <div class="panel-body">
 
+        <!-- Live real-time bar -->
+        <div class="live-bw-bar">
+          <span class="live-bw-dot"></span>
+          <span class="live-bw-label"><i class="fa-solid fa-bolt" style="margin-right:5px;"></i>Live Throughput</span>
+          <span class="live-bw-value" id="live-bps">0 B/s</span>
+          <span style="margin:0 8px;color:var(--text-muted);">|</span>
+          <span style="font-size:.78rem;color:var(--text-label);">Sessions:</span>
+          <span class="live-sessions-value" id="live-sessions">{{ active_conns }}</span>
+        </div>
+
+        <!-- 30-day cycle card -->
+        <div class="cycle-card">
+          <div class="cycle-card-header">
+            <div class="cycle-card-icon"><i class="fa-solid fa-rotate"></i></div>
+            <div>
+              <div class="cycle-card-title">30-Day Bandwidth Cycle</div>
+              <div class="cycle-card-sub">Auto-resets · persists through restarts</div>
+            </div>
+          </div>
+          <div class="cycle-stats-row">
+            <div class="cycle-stat">
+              <div class="cs-val" id="cycle-used">{{ cycle_used }}</div>
+              <div class="cs-lbl">Used This Cycle</div>
+            </div>
+            <div class="cycle-stat">
+              <div class="cs-val" id="cycle-days">{{ cycle_days_left }}d</div>
+              <div class="cs-lbl">Days Remaining</div>
+            </div>
+            <div class="cycle-stat">
+              <div class="cs-val" style="font-size:.85rem;" id="cycle-start">{{ cycle_start }}</div>
+              <div class="cs-lbl">Cycle Start</div>
+            </div>
+            <div class="cycle-stat">
+              <div class="cs-val" style="font-size:.85rem;" id="cycle-end">{{ cycle_end }}</div>
+              <div class="cs-lbl">Cycle End</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Date-range filter tabs -->
+        <div class="bw-filter-row">
+          <button class="bw-filter-btn active" data-filter="today"  onclick="bwSetFilter('today',  this)">Today</button>
+          <button class="bw-filter-btn"         data-filter="7d"    onclick="bwSetFilter('7d',     this)">7 Days</button>
+          <button class="bw-filter-btn"         data-filter="15d"   onclick="bwSetFilter('15d',    this)">15 Days</button>
+          <button class="bw-filter-btn"         data-filter="30d"   onclick="bwSetFilter('30d',    this)">30 Days</button>
+          <button class="bw-filter-btn"         data-filter="custom" onclick="bwSetFilter('custom', this)">Custom</button>
+        </div>
+
+        <!-- Custom date inputs -->
+        <div class="bw-custom-range" id="bw-custom-range">
+          <label style="font-size:.78rem;color:var(--text-label);">From:</label>
+          <input type="date" class="bw-date-input" id="bw-date-start" />
+          <label style="font-size:.78rem;color:var(--text-label);">To:</label>
+          <input type="date" class="bw-date-input" id="bw-date-end" />
+          <button class="bw-filter-btn active" onclick="bwLoadCustom()">
+            <i class="fa-solid fa-magnifying-glass"></i> Apply
+          </button>
+        </div>
+
+        <!-- Analytics result: big total -->
+        <div class="bw-analytics-total">
+          <div class="big-val" id="bw-analytics-total">--</div>
+          <div class="big-label" id="bw-analytics-label">Loading...</div>
+        </div>
+
+        <!-- Daily usage bar chart -->
+        <div class="bw-chart">
+          <div class="bw-chart-title">Daily Usage</div>
+          <div class="bw-chart-bars" id="bw-chart-bars">
+            <div style="color:var(--text-muted);font-size:.78rem;margin:auto;">Loading chart...</div>
+          </div>
+        </div>
+
+        <!-- Static bandwidth info rows -->
         <div class="info-section">
           <div class="info-section-title"><i class="fa-solid fa-circle-info"></i> Current Status</div>
           <div class="info-row">
@@ -888,7 +1083,8 @@
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     document.getElementById('panel-' + name).classList.add('active');
     btn.classList.add('active');
-    if (name === 'health') startHealthUpdates();
+    if (name === 'health')    startHealthUpdates();
+    if (name === 'bandwidth') { loadBwAnalytics(_currentBwFilter, null, null); refreshBandwidth(); }
   }
 
   // ── Helpers ────────────────────────────────────────────────
@@ -898,6 +1094,107 @@
     return el;
   }
   function stopSpin(el) { if (el) el.classList.remove('spin'); }
+
+  // ── SSE Live Bandwidth ──────────────────────────────────────
+  (function startLiveSSE() {
+    if (!window.EventSource) return;
+    const es = new EventSource('/api/live/bandwidth');
+    es.onmessage = function(e) {
+      try {
+        const d = JSON.parse(e.data);
+        const bpsEl  = document.getElementById('live-bps');
+        const sessEl = document.getElementById('live-sessions');
+        const hConns = document.getElementById('h-conns');
+        if (bpsEl)  bpsEl.textContent  = d.bps_fmt || '0 B/s';
+        if (sessEl) sessEl.textContent = d.active_sessions ?? 0;
+        if (hConns) hConns.textContent = d.active_sessions ?? 0;
+      } catch(e) {}
+    };
+    es.onerror = function() { es.close(); };
+  })();
+
+  // ── Bandwidth Analytics (date-range) ───────────────────────
+  let _currentBwFilter = 'today';
+
+  function bwSetFilter(filter, btn) {
+    _currentBwFilter = filter;
+    document.querySelectorAll('.bw-filter-btn').forEach(b => b.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+    const customRow = document.getElementById('bw-custom-range');
+    if (customRow) customRow.classList.toggle('show', filter === 'custom');
+    if (filter !== 'custom') loadBwAnalytics(filter, null, null);
+  }
+
+  function bwLoadCustom() {
+    const start = document.getElementById('bw-date-start')?.value;
+    const end   = document.getElementById('bw-date-end')?.value;
+    if (!start) return;
+    loadBwAnalytics('custom', start, end || start);
+  }
+
+  async function loadBwAnalytics(filter, start, end) {
+    const totalEl = document.getElementById('bw-analytics-total');
+    const labelEl = document.getElementById('bw-analytics-label');
+    const barsEl  = document.getElementById('bw-chart-bars');
+    if (totalEl) totalEl.textContent = '...';
+    if (labelEl) labelEl.textContent = 'Loading...';
+    if (barsEl)  barsEl.innerHTML    = '<div style="color:var(--text-muted);font-size:.78rem;margin:auto;">Loading...</div>';
+
+    try {
+      let url = `/api/bandwidth/analytics?filter=${filter}`;
+      if (start) url += `&start=${start}&end=${end || start}`;
+      const r = await fetch(url);
+      const d = await r.json();
+
+      if (totalEl) totalEl.textContent = d.total_fmt || '0 B';
+
+      const labels = {today:'Today', '7d':'Last 7 Days', '15d':'Last 15 Days',
+                      '30d':'Last 30 Days', custom:'Custom Range'};
+      if (labelEl) labelEl.textContent = (labels[filter] || filter) + '  -  '
+                                        + d.start + (d.end !== d.start ? ' to ' + d.end : '');
+
+      // Update cycle card
+      if (d.cycle) {
+        const cu = document.getElementById('cycle-used');
+        const cd = document.getElementById('cycle-days');
+        const cs = document.getElementById('cycle-start');
+        const ce = document.getElementById('cycle-end');
+        if (cu) cu.textContent = d.cycle.fmt || '0 B';
+        if (cd) cd.textContent = (d.cycle.days_left ?? '--') + 'd';
+        if (cs) cs.textContent = d.cycle.start || '--';
+        if (ce) ce.textContent = d.cycle.end   || '--';
+      }
+
+      // Build bar chart
+      if (barsEl && d.daily && d.daily.length > 0) {
+        const maxBytes = Math.max(...d.daily.map(x => x.bytes), 1);
+        barsEl.innerHTML = '';
+        d.daily.forEach(item => {
+          const pct = Math.max(2, Math.round((item.bytes / maxBytes) * 100));
+          const col = document.createElement('div');
+          col.className = 'bw-chart-col';
+          col.title = item.date + ': ' + fmtBytes(item.bytes);
+          col.innerHTML =
+            `<div class="bw-chart-bar" style="height:${pct}%;"></div>` +
+            `<div class="bw-chart-date">${item.date.slice(5)}</div>`;
+          barsEl.appendChild(col);
+        });
+      } else if (barsEl) {
+        barsEl.innerHTML = '<div style="color:var(--text-muted);font-size:.78rem;margin:auto;">No data for this period</div>';
+      }
+    } catch(e) {
+      if (totalEl) totalEl.textContent = '--';
+      if (labelEl) labelEl.textContent = 'Error loading data';
+      console.warn('bwAnalytics error:', e);
+    }
+  }
+
+  function fmtBytes(b) {
+    if (b >= 1073741824) return (b/1073741824).toFixed(2)+' GB';
+    if (b >= 1048576)    return (b/1048576).toFixed(2)+' MB';
+    if (b >= 1024)       return (b/1024).toFixed(1)+' KB';
+    return b+' B';
+  }
 
   // ── Stats refresh ──────────────────────────────────────────
   async function refreshStats() {

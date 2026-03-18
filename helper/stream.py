@@ -16,15 +16,25 @@ from database import Database
 
 logger = logging.getLogger(__name__)
 
+# ── Chunk size strategy ─────────────────────────────────────────────────────
 # Telegram hard-caps upload.GetFile at 1 MB per request.
-CHUNK_SIZE = 1024 * 1024          # 1 MB per Telegram RPC
-FIRST_CHUNK_SIZE = 64 * 1024      # 64 KB — minimal TTFB startup slice
-PREFETCH_COUNT = 12               # chunks queued ahead of writer
-_MAX_CHUNK_RETRIES = 5
-_RETRY_BACKOFF = 0.1              # faster retry backoff
-_RPC_TIMEOUT = 10.0
-_FILE_CACHE_TTL = 5 * 60          # 5 minutes inactivity TTL
-_SEEK_INITIAL_SIZE = 64 * 1024    # 64 KB initial slice on seek
+CHUNK_SIZE          = 1024 * 1024   # 1 MB — stable streaming
+STARTUP_CHUNK_SIZE  = 128 * 1024    # 128 KB — low-latency startup
+SEEK_CHUNK_SIZE     = 64  * 1024    # 64 KB — fast seek response
+FIRST_CHUNK_SIZE    = 64  * 1024    # 64 KB — minimal TTFB startup slice (legacy compat)
+
+PREFETCH_COUNT      = 12            # chunks queued ahead of writer
+_MAX_CHUNK_RETRIES  = 5
+_RETRY_BACKOFF      = 0.1           # faster retry backoff
+_RPC_TIMEOUT        = 10.0
+_FILE_CACHE_TTL     = 5 * 60        # 5 minutes inactivity TTL
+_SEEK_INITIAL_SIZE  = 64 * 1024     # 64 KB initial slice on seek
+
+# ── Chunk range cache (multi-user, keyed by file_id + byte_range) ───────────
+# Key: (file_hash, from_bytes, until_bytes)  Value: (data_bytes, expire_time)
+_chunk_cache:      Dict[Tuple[str, int, int], Tuple[bytes, float]] = {}
+_chunk_cache_lock  = asyncio.Lock()
+_CHUNK_CACHE_TTL   = 5 * 60         # 5 minutes
 
 MIME_TYPE_MAP = {
     "video":    "video/mp4",
@@ -69,11 +79,22 @@ _BROWSER_NATIVE_AUDIO = {
     "audio/x-aac",
 }
 
-# Session tracking: session_key → last-heartbeat timestamp
+# ── Session tracking ────────────────────────────────────────────────────────
+# session_key → last-heartbeat timestamp
 _active_sessions: Dict[str, float] = {}
 _sessions_lock = asyncio.Lock()
 _SESSION_TTL = 30
 _SESSION_HEARTBEAT_INTERVAL = 5
+
+# ── Real-time bandwidth tracking (bytes/sec) ────────────────────────────────
+# Rolling window: list of (timestamp, bytes) tuples for last 10 seconds
+_bw_window: list = []           # (monotonic_ts, bytes)
+_bw_window_lock = asyncio.Lock()
+_BW_WINDOW_SECONDS = 10         # rolling window size
+
+# Total bytes tracked this process lifetime (for SSE push)
+_live_bytes_total: int = 0
+_live_bytes_lock  = asyncio.Lock()
 
 # Bandwidth dedup
 _bw_tracked: Dict[Tuple[str, str, int], float] = {}
@@ -86,7 +107,7 @@ _file_cache_atime: Dict[str, float] = {}
 _cache_lock = asyncio.Lock()
 
 # Thumbnail URL cache
-_thumbnail_cache:  Dict[str, Optional[str]] = {}
+_thumbnail_cache:   Dict[str, Optional[str]] = {}
 _thumb_cache_atime: Dict[str, float] = {}
 
 
@@ -135,18 +156,13 @@ async def get_thumbnail_url(
     file_data: dict,
     base_url: str,
 ) -> Optional[str]:
-    """Return a publicly-accessible thumbnail URL for external player artwork metadata.
-
-    Returns None if no thumbnail is available.
-    """
+    """Return a publicly-accessible thumbnail URL for external player artwork metadata."""
     now = time.monotonic()
 
-    # Return cached result (including None → no thumbnail)
     if file_hash in _thumbnail_cache:
         _thumb_cache_atime[file_hash] = now
         return _thumbnail_cache[file_hash]
 
-    # Only attempt for video / audio files
     file_type = file_data.get("file_type", "document")
     if file_type not in (
         Config.FILE_TYPE_VIDEO, Config.FILE_TYPE_AUDIO, "video", "audio"
@@ -164,7 +180,6 @@ async def get_thumbnail_url(
             _thumb_cache_atime[file_hash] = now
             return None
 
-        # Check for a thumbnail on the media object
         thumb = None
         if msg.video and msg.video.thumbs:
             thumb = msg.video.thumbs[0]
@@ -178,8 +193,6 @@ async def get_thumbnail_url(
             _thumb_cache_atime[file_hash] = now
             return None
 
-        # Use the stream page OG image as the artwork URL — already served
-        # by the web server with no extra Telegram download needed.
         thumb_url = f"{base_url}/stream/{file_hash}"
         _thumbnail_cache[file_hash] = thumb_url
         _thumb_cache_atime[file_hash] = now
@@ -212,11 +225,76 @@ async def _evict_stale_file_cache() -> None:
         _thumbnail_cache.pop(k, None)
         _thumb_cache_atime.pop(k, None)
 
+    # Evict stale chunk-cache entries
+    async with _chunk_cache_lock:
+        now_real = time.monotonic()
+        stale_chunks = [k for k, (_, exp) in _chunk_cache.items() if now_real > exp]
+        for k in stale_chunks:
+            del _chunk_cache[k]
+
     if stale or stale_thumb:
         logger.debug(
             "cache evict: %d file-meta, %d thumb entries removed",
             len(stale), len(stale_thumb),
         )
+
+
+async def _record_live_bytes(n: int) -> None:
+    """Add *n* bytes to the real-time bandwidth window."""
+    global _live_bytes_total
+    now = time.monotonic()
+    async with _bw_window_lock:
+        _bw_window.append((now, n))
+        # Keep only last 10 s
+        cutoff = now - _BW_WINDOW_SECONDS
+        while _bw_window and _bw_window[0][0] < cutoff:
+            _bw_window.pop(0)
+    async with _live_bytes_lock:
+        _live_bytes_total += n
+
+
+def get_live_bandwidth_bps() -> float:
+    """Return current bytes/sec averaged over the rolling window."""
+    if not _bw_window:
+        return 0.0
+    now    = time.monotonic()
+    cutoff = now - _BW_WINDOW_SECONDS
+    recent = [(ts, b) for ts, b in _bw_window if ts >= cutoff]
+    if not recent:
+        return 0.0
+    total_bytes   = sum(b for _, b in recent)
+    elapsed       = max(1.0, now - recent[0][0]) if len(recent) > 1 else _BW_WINDOW_SECONDS
+    return total_bytes / elapsed
+
+
+async def get_live_bytes_total() -> int:
+    async with _live_bytes_lock:
+        return _live_bytes_total
+
+
+# ── Chunk cache helpers ─────────────────────────────────────────────────────
+
+async def _get_cached_chunk(file_hash: str, from_b: int, until_b: int) -> Optional[bytes]:
+    key = (file_hash, from_b, until_b)
+    async with _chunk_cache_lock:
+        entry = _chunk_cache.get(key)
+        if entry is None:
+            return None
+        data, exp = entry
+        if time.monotonic() > exp:
+            del _chunk_cache[key]
+            return None
+        return data
+
+
+async def _store_cached_chunk(file_hash: str, from_b: int, until_b: int, data: bytes) -> None:
+    """Cache only small chunks (seek/startup) — avoids memory bloat for large streams."""
+    # Only cache chunks ≤ 256 KB to keep memory bounded
+    if len(data) > 256 * 1024:
+        return
+    key = (file_hash, from_b, until_b)
+    async with _chunk_cache_lock:
+        _chunk_cache[key] = (data, time.monotonic() + _CHUNK_CACHE_TTL)
 
 
 class ByteStreamer:
@@ -225,7 +303,6 @@ class ByteStreamer:
         self.client: Client = client
         self.cached_file_ids: Dict[str, FileId] = {}
         self._background_tasks: Set[asyncio.Task] = set()
-        # Periodic cache cleaner: runs every 2 minutes to evict stale entries
         self._start_background_task(self._cache_cleaner())
 
     def _start_background_task(self, coro) -> asyncio.Task:
@@ -513,12 +590,8 @@ class ByteStreamer:
         while True:
             try:
                 await asyncio.sleep(120)
-                # Evict per-file caches idle for > 5 min
                 await _evict_stale_file_cache()
-                # Evict stale FileId entries (30 min TTL)
                 now = time.monotonic()
-                # FileId cache doesn't carry timestamps — clear fully every 30 min
-                # via a separate counter
                 if not hasattr(self, '_last_full_clear'):
                     self._last_full_clear = now
                 if now - self._last_full_clear > 1800:
@@ -609,6 +682,20 @@ async def _should_track_bandwidth(
         return True
 
 
+def _select_chunk_size(from_bytes: int, is_seeking: bool) -> int:
+    """
+    Intelligent chunk size selection:
+      - Seeking  → 64 KB  (fast resume)
+      - Startup  → 128 KB (low-latency first byte)
+      - Stable   → 1 MB   (efficient throughput)
+    """
+    if is_seeking:
+        return SEEK_CHUNK_SIZE
+    if from_bytes == 0:
+        return STARTUP_CHUNK_SIZE
+    return CHUNK_SIZE
+
+
 class StreamingService:
 
     def __init__(self, bot_client: Client, db: Database):
@@ -628,10 +715,11 @@ class StreamingService:
         client_ip        = _get_client_ip(request)
         now              = time.monotonic()
 
+        # ── File metadata cache ─────────────────────────────────────────────
         async with _cache_lock:
             file_data = _file_meta_cache.get(file_hash)
             if file_data is not None:
-                _file_cache_atime[file_hash] = now  # refresh access time
+                _file_cache_atime[file_hash] = now
 
         if file_data is None:
             file_data = await self.db.get_file_by_hash(file_hash)
@@ -641,6 +729,7 @@ class StreamingService:
                 _file_meta_cache[file_hash]  = file_data
                 _file_cache_atime[file_hash] = now
 
+        # ── Bandwidth gate ──────────────────────────────────────────────────
         if Config.get("bandwidth_mode", True):
             stats  = await self.db.get_bandwidth_stats()
             max_bw = Config.get("max_bandwidth", 107374182400)
@@ -673,16 +762,28 @@ class StreamingService:
         until_bytes = min(until_bytes, file_size - 1)
         req_length  = until_bytes - from_bytes + 1
 
-        # Chunk offset calculation
-        offset         = from_bytes - (from_bytes % CHUNK_SIZE)
+        # ── Determine if this is a seek (non-zero start that isn't the beginning) ──
+        # A seek is a range request that starts at a position > 0. Pure startup
+        # requests either start at 0 or are the first non-range request.
+        is_seeking = is_range_request and from_bytes > 0
+
+        # ── Intelligent chunk size selection ────────────────────────────────
+        chunk_size = _select_chunk_size(from_bytes, is_seeking)
+
+        # ── Chunk offset calculation (aligned to chunk_size boundary) ────────
+        offset         = from_bytes - (from_bytes % chunk_size)
         first_part_cut = from_bytes - offset
-        last_part_cut  = (until_bytes % CHUNK_SIZE) + 1
-        part_count     = math.ceil((until_bytes + 1) / CHUNK_SIZE) - (offset // CHUNK_SIZE)
+        last_part_cut  = (until_bytes % chunk_size) + 1
+        part_count     = math.ceil((until_bytes + 1) / chunk_size) - (offset // chunk_size)
 
         logger.debug(
-            "stream  msg=%s  size=%d  range=%d-%d  offset=%d  parts=%d",
+            "stream  msg=%s  size=%d  range=%d-%d  offset=%d  parts=%d  chunk=%dKB  seek=%s",
             message_id, file_size, from_bytes, until_bytes, offset, part_count,
+            chunk_size // 1024, is_seeking,
         )
+
+        # ── Check small-chunk cache (seek/startup responses) ────────────────
+        cached_data = await _get_cached_chunk(file_hash, from_bytes, until_bytes)
 
         mime = (
             file_data.get("mime_type")
@@ -714,7 +815,7 @@ class StreamingService:
         if is_range_request:
             headers["Content-Range"] = f"bytes {from_bytes}-{until_bytes}/{file_size}"
 
-        # Artwork metadata headers for external players (VLC, MX Player, iOS AVPlayer)
+        # Artwork metadata headers
         try:
             base_url  = str(request.url.origin())
             thumb_url = await get_thumbnail_url(
@@ -725,6 +826,17 @@ class StreamingService:
                 headers["X-Image-Url"] = thumb_url
         except Exception as _te:
             logger.debug("artwork header skipped: %s", _te)
+
+        # ── Serve from cache if available ───────────────────────────────────
+        if cached_data is not None:
+            logger.debug(
+                "cache hit  msg=%s  range=%d-%d  size=%d",
+                message_id, from_bytes, until_bytes, len(cached_data),
+            )
+            resp = web.Response(status=status, headers=headers, body=cached_data)
+            # Track in live bandwidth window
+            asyncio.ensure_future(_record_live_bytes(len(cached_data)))
+            return resp
 
         response = web.StreamResponse(status=status, headers=headers)
 
@@ -739,7 +851,8 @@ class StreamingService:
         session_key    = f"{file_hash}:{client_ip}"
         bytes_sent     = 0
         last_heartbeat = time.monotonic()
-        is_first_chunk = True
+        collected_chunks: list = []     # collect for small-range caching
+        collect_for_cache = req_length <= 256 * 1024   # only collect small chunks
 
         try:
             async for chunk in self.streamer.yield_file(
@@ -748,19 +861,19 @@ class StreamingService:
                 first_part_cut,
                 last_part_cut,
                 part_count,
-                CHUNK_SIZE,
+                chunk_size,
             ):
                 try:
-                    # For the very first chunk, send a small slice immediately
-                    # to minimize TTFB, then send the remainder
-                    if is_first_chunk and len(chunk) > FIRST_CHUNK_SIZE:
-                        await response.write(chunk[:FIRST_CHUNK_SIZE])
-                        await response.write(chunk[FIRST_CHUNK_SIZE:])
-                        bytes_sent += len(chunk)
-                    else:
-                        await response.write(chunk)
-                        bytes_sent += len(chunk)
-                    is_first_chunk = False
+                    await response.write(chunk)
+                    chunk_len = len(chunk)
+                    bytes_sent += chunk_len
+
+                    # Real-time bandwidth accounting
+                    asyncio.ensure_future(_record_live_bytes(chunk_len))
+
+                    # Collect for cache if this is a small range
+                    if collect_for_cache:
+                        collected_chunks.append(chunk)
 
                     now = time.monotonic()
                     if now - last_heartbeat >= _SESSION_HEARTBEAT_INTERVAL:
@@ -772,6 +885,7 @@ class StreamingService:
                         "stream  msg=%s  connection reset after %d bytes",
                         message_id, bytes_sent,
                     )
+                    collect_for_cache = False   # don't cache partial
                     break
 
         except asyncio.CancelledError:
@@ -779,20 +893,30 @@ class StreamingService:
                 "stream  msg=%s  request cancelled after %d bytes",
                 message_id, bytes_sent,
             )
+            collect_for_cache = False
         except (ConnectionResetError, BrokenPipeError):
             logger.debug(
                 "stream  msg=%s  client disconnected after %d bytes",
                 message_id, bytes_sent,
             )
+            collect_for_cache = False
         except Exception as exc:
             logger.error("streaming error: msg=%s err=%s", message_id, exc)
+            collect_for_cache = False
 
         try:
             await response.write_eof()
         except Exception:
             pass
 
-        # Bandwidth accounting with deduplication
+        # ── Store small completed responses in chunk cache ──────────────────
+        if collect_for_cache and collected_chunks and bytes_sent == req_length:
+            assembled = b"".join(collected_chunks)
+            asyncio.ensure_future(
+                _store_cached_chunk(file_hash, from_bytes, until_bytes, assembled)
+            )
+
+        # ── Bandwidth accounting with deduplication ─────────────────────────
         if bytes_sent > 0:
             should_track = await _should_track_bandwidth(client_ip, message_id, from_bytes)
             if should_track:
