@@ -12,7 +12,7 @@ START_TEXT = "**👋 ʜᴇʏ, {}**\n\n**ɪ'ᴍ ᴛᴇʟᴇɢʀᴀᴍ ꜰɪʟᴇ�
 
 HELP_TEXT = "**- ᴀᴅᴅ ᴍᴇ ᴀꜱ ᴀɴ ᴀᴅᴍɪɴ ᴏɴ ᴛʜᴇ ᴄʜᴀɴɴᴇʟ**\n**- ꜱᴇɴᴅ ᴍᴇ ᴀɴʏ ᴅᴏᴄᴜᴍᴇɴᴛ ᴏʀ ᴍᴇᴅɪᴀ**\n**- ɪ'ʟʟ ᴘʀᴏᴠɪᴅᴇ ꜱᴛʀᴇᴀᴍᴀʙʟᴇ ʟɪɴᴋ**\n\n**🔞 ᴀᴅᴜʟᴛ ᴄᴏɴᴛᴇɴᴛ ꜱᴛʀɪᴄᴛʟʏ ᴘʀᴏʜɪʙɪᴛᴇᴅ.**\n\n**ʀᴇᴘᴏʀᴛ ʙᴜɢꜱ ᴛᴏ [ᴅᴇᴠᴇʟᴏᴘᴇʀ](https://t.me/FLiX_LY)**"
 
-ABOUT_TEXT = "**⚜ ᴍʏ ɴᴀᴍᴇ : {}**\n\n**✦ ᴠᴇʀꜱɪᴏɴ : `2.1.0`**\n**✦ ᴜᴘᴅᴀᴛᴇᴅ ᴏɴ : `06-ᴊᴀɴᴜᴀʀʏ-2024`**\n**✦ ᴅᴇᴠᴇʟᴏᴘᴇʀ : [٭千🅻丨乂٭](https://t.me/FLiX_LY)**"
+ABOUT_TEXT = "**⚜ ᴍʏ ɴᴀᴍᴇ : {}**\n\n**✦ ᴠᴇʀꜱɪᴏɴ : `2.1.0`**\n**✦ ᴜᴘᴅᴀᴛᴇᴅ ᴏɴ : `26-ᴊᴀɴᴜᴀʀʏ-2026`**\n**✦ ᴅᴇᴠᴇʟᴏᴘᴇʀ : [٭千🅻丨乂٭](https://t.me/FLiX_LY)**"
 
 
 
@@ -48,17 +48,14 @@ def show_nav(page: str, user_mention: str, bot_name: str, bot_username: str):
     return text, InlineKeyboardMarkup(btns)
 
 
-
-
 @Client.on_message(filters.command("start") & filters.private, group=1)
 async def start_command(client: Client, message: Message):
     user = message.from_user
-    user_id = user.id
-    BOT_INFO = await Config.BOT_INFO
+    bot_info = Config.BOT_INFO 
 
     # 1. Register User & Log to Admin Chat
     is_new = await db.register_user_on_start({
-        "user_id": str(user_id),
+        "user_id": str(user.id),
         "username": user.username or "",
         "first_name": user.first_name or "",
         "last_name": user.last_name or "",
@@ -72,7 +69,7 @@ async def start_command(client: Client, message: Message):
                 text=(
                     "**#ɴᴇᴡ_ᴜꜱᴇʀ**\n\n"
                     f"👤 **ᴜꜱᴇʀ:** {user.mention}\n"
-                    f"🆔 **ɪᴅ:** `{user_id}`\n"
+                    f"🆔 **ɪᴅ:** `{user.id}`\n"
                     f"👤 **ᴜꜱᴇʀɴᴀᴍᴇ:** @{user.username or 'ɴ/ᴀ'}\n"
                     f"📛 **ɴᴀᴍᴇ:** `{full_name}`"
                 ),
@@ -84,7 +81,7 @@ async def start_command(client: Client, message: Message):
     # 2. Deep Link Logic
     if len(message.command) > 1:
         arg = message.command[1]
-        file_hash = arg[5:] if arg.startswith("file_") else arg
+        file_hash = arg.replace("file_", "")
 
         if Config.get("fsub_mode", False):
             if not await check_fsub(client, message):
@@ -144,7 +141,7 @@ async def start_command(client: Client, message: Message):
             return
 
     # 3. Standard Start Message
-    text, buttons = show_nav("start", user.mention, _me.first_name, _me.username)
+    text, buttons = show_nav("start", user.mention, bot_info.first_name, bot_info.username)
     if Config.Start_IMG:
         await client.send_photo(
             chat_id=message.chat.id,
@@ -161,10 +158,11 @@ async def start_command(client: Client, message: Message):
             reply_to_message_id=message.id
         )
 
+
 @Client.on_message(filters.command("help") & filters.private, group=1)
 async def help_command(client: Client, message: Message):
-    BOT_INFO = await Config.BOT_INFO
-    text, buttons = show_nav("help", message.from_user.mention, _me.first_name, _me.username)
+    bot_info = Config.BOT_INFO
+    text, buttons = show_nav("help", message.from_user.mention, bot_info.first_name, bot_info.username)
     await client.send_message(
         chat_id=message.chat.id,
         text=text,
@@ -172,10 +170,11 @@ async def help_command(client: Client, message: Message):
         reply_to_message_id=message.id
     )
 
+
 @Client.on_message(filters.command("about") & filters.private, group=1)
 async def about_command(client: Client, message: Message):
-    BOT_INFO = await Config.BOT_INFO
-    text, buttons = show_nav("about", message.from_user.mention, _me.first_name, _me.username)
+    bot_info = Config.BOT_INFO
+    text, buttons = show_nav("about", message.from_user.mention, bot_info.first_name, bot_info.username)
     await client.send_message(
         chat_id=message.chat.id,
         text=text,
@@ -191,7 +190,11 @@ async def info_command(client: Client, message: Message):
         try:
             target_user = await client.get_users(user_input)
         except Exception:
-            return await client.send_message(message.chat.id, "**❌ ᴜꜱᴇʀ ɴᴏᴛ ꜰᴏᴜɴᴅ ɪɴ ᴍʏ ᴅᴀᴛᴀʙᴀꜱᴇ.**", reply_to_message_id=message.id)
+            return await client.send_message(
+                chat_id=message.chat.id, 
+                text="**❌ ᴜꜱᴇʀ ɴᴏᴛ ꜰᴏᴜɴᴅ ɪɴ ᴍʏ ᴅᴀᴛᴀʙᴀꜱᴇ.**", 
+                reply_to_message_id=message.id
+            )
     elif message.reply_to_message:
         target_user = message.reply_to_message.from_user
     else:
@@ -205,9 +208,11 @@ async def info_command(client: Client, message: Message):
         f"**🔗 ᴜꜱᴇʀɴᴀᴍᴇ:** @{target_user.username or 'ɴ/ᴀ'}\n"
         f"**🛰 ᴘᴇʀᴍᴀɴᴇɴᴛ ʟɪɴᴋ:** [ᴄʟɪᴄᴋ ʜᴇʀᴇ](tg://user?id={target_user.id})"
     )
-    await client.send_message(message.chat.id, info_text, reply_to_message_id=message.id)
-
-
+    await client.send_message(
+        chat_id=message.chat.id, 
+        text=info_text, 
+        reply_to_message_id=message.id
+    )
 
 
 @Client.on_callback_query(filters.regex(r"^(start|help|about|close)$"))
@@ -216,8 +221,8 @@ async def cb_handler(client: Client, query: CallbackQuery):
         await query.message.delete()
         return await query.answer("ᴄʟᴏꜱᴇᴅ")
 
-    BOT_INFO = await Config.BOT_INFO
-    text, markup = show_nav(query.data, query.from_user.mention, _me.first_name, _me.username)
+    bot_info = Config.BOT_INFO
+    text, markup = show_nav(query.data, query.from_user.mention, bot_info.first_name, bot_info.username)
     
     try:
         if query.message.photo:
