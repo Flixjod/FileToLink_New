@@ -508,7 +508,7 @@ async def cb_owner_file_detail(client: Client, callback: CallbackQuery):
     base_url      = Config.URL or f"http://localhost:{Config.PORT}"
     stream_link   = f"{base_url}/stream/{file_hash}"
     download_link = f"{base_url}/dl/{file_hash}"
-    telegram_link = f"https://t.me/{(await client.get_me()).username}?start=file_{file_hash}"
+    telegram_link = f"https://t.me/{Config.BOT_INFO.username}?start=file_{file_hash}"
 
     safe_name      = escape_markdown(file_data["file_name"])
     formatted_size = format_size(file_data["file_size"])
@@ -797,7 +797,7 @@ async def inline_query_handler(client: Client, inline_query):
     file_hash     = file_data["file_id"]
     stream_link   = f"{base_url}/stream/{file_hash}"
     download_link = f"{base_url}/dl/{file_hash}"
-    bot_username  = (await client.get_me()).username
+    bot_username  = Config.BOT_INFO.username
     telegram_link = f"https://t.me/{bot_username}?start=file_{file_hash}"
     file_type     = file_data.get("file_type", "document")
     is_streamable = file_type in STREAMABLE_TYPES

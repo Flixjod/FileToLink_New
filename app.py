@@ -1,7 +1,7 @@
+import asyncio
 import json
 import logging
 import time
-import asyncio
 from pathlib import Path
 
 import psutil
@@ -15,6 +15,9 @@ from database import Database
 from helper import StreamingService, check_bandwidth_limit, format_size
 from helper.stream import (
     get_active_session_count,
+    get_rt_stats,
+    subscribe_sse,
+    unsubscribe_sse,
     _register_session,
     _unregister_session,
     _get_client_ip,
@@ -29,10 +32,11 @@ TEMPLATES_DIR = Path(__file__).parent / "templates"
 
 
 def _bot_info(bot: Bot) -> dict:
-    me = getattr(bot, "me", None)
+    # Use cached Config.BOT_INFO instead of calling get_me() again
+    me = Config.BOT_INFO or getattr(bot, "me", None)
     return {
-        "bot_name":     (me.first_name if me else None) or DEFAULT_BOT_NAME,
-        "bot_username": (me.username   if me else None) or DEFAULT_BOT_USERNAME,
+        "bot_name":     (me.first_name if me else None) or "FLiX Stream Bot",
+        "bot_username": (me.username   if me else None) or "FLiXStreamBot",
         "bot_id":       str(me.id)    if me else "N/A",
         "bot_dc":       str(me.dc_id) if me else "N/A",
     }
@@ -95,9 +99,6 @@ def build_app(bot: Bot, database) -> web.Application:
         }
 
     async def _tracked_stream(request: web.Request, file_hash: str, is_download: bool):
-        # One (file_hash, client_ip) pair = one unique session.
-        # Registration is idempotent: repeated range-requests from the same
-        # player only refresh the heartbeat, they never increment the counter.
         client_ip   = _get_client_ip(request)
         session_key = f"{file_hash}:{client_ip}"
         await _register_session(session_key)
@@ -118,8 +119,6 @@ def build_app(bot: Bot, database) -> web.Application:
         if not file_data:
             raise web.HTTPNotFound(reason="File not found")
 
-        # Also verify the file exists in the Flog/dump channel so we can
-        # surface a clean 404 instead of a player error mid-stream.
         try:
             from helper.stream import get_file_ids
             await get_file_ids(bot, str(file_data["message_id"]))
@@ -153,9 +152,6 @@ def build_app(bot: Bot, database) -> web.Application:
         playable = is_browser_playable(mime)
 
         info = _bot_info(bot)
-        # Build thumbnail URL for the template (used ONLY as metadata for external
-        # players — the built-in web player does NOT display it)
-        # thumbnail_url is used only as OG metadata (no /thumb endpoint)
         thumbnail_url = f"{base}/stream/{file_hash}"
         context = {
             "bot_name":         info["bot_name"],
@@ -206,6 +202,7 @@ def build_app(bot: Bot, database) -> web.Application:
         uptime_str     = _format_uptime(uptime_seconds)
 
         info = _bot_info(bot)
+        rt   = get_rt_stats()
 
         return {
             **info,
@@ -222,8 +219,11 @@ def build_app(bot: Bot, database) -> web.Application:
             "bw_today":     format_size(bw_today),
             "bw_remaining": format_size(remaining),
             "bw_pct":       bw_pct,
-            "bot_status":   "running" if getattr(bot, "me", None) else "initializing",
+            "bot_status":   "running" if Config.BOT_INFO else "initializing",
             "active_conns": get_active_session_count(),
+            # Real-time stats exposed to the template for initial render
+            "rt_bytes_served": format_size(rt["total_bytes_served"]),
+            "rt_bytes_per_sec": format_size(int(rt["bytes_per_sec"])) + "/s",
         }
 
     def _format_uptime(seconds: float) -> str:
@@ -264,18 +264,23 @@ def build_app(bot: Bot, database) -> web.Application:
                 ram_used_fmt = "N/A"
 
             uptime_str = _format_uptime(time.time() - Config.UPTIME if Config.UPTIME else 0)
+            rt         = get_rt_stats()
 
             payload = {
-                "total_users": stats.get("total_users", 0),
-                "total_chats": stats.get("total_users", 0),
-                "total_files": stats.get("total_files", 0),
-                "ram_used":    ram_used_fmt,
-                "cpu_pct":     cpu_pct,
-                "uptime":      uptime_str,
-                "bw_pct":      bw_pct,
-                "bw_used":     format_size(bw_used),
-                "bw_today":    format_size(bw_today),
-                "bw_limit":    format_size(max_bw),
+                "total_users":       stats.get("total_users", 0),
+                "total_chats":       stats.get("total_users", 0),
+                "total_files":       stats.get("total_files", 0),
+                "ram_used":          ram_used_fmt,
+                "cpu_pct":           cpu_pct,
+                "uptime":            uptime_str,
+                "bw_pct":            bw_pct,
+                "bw_used":           format_size(bw_used),
+                "bw_today":          format_size(bw_today),
+                "bw_limit":          format_size(max_bw),
+                "active_conns":      get_active_session_count(),
+                "rt_bytes_served":   rt["total_bytes_served"],
+                "rt_bytes_per_sec":  rt["bytes_per_sec"],
+                "rt_active_sessions": rt["active_sessions"],
             }
             return web.Response(text=json.dumps(payload), content_type="application/json")
         except Exception as exc:
@@ -291,12 +296,16 @@ def build_app(bot: Bot, database) -> web.Application:
             today     = stats["today_bandwidth"]
             remaining = max(0, max_bw - used)
             pct       = round((used / max_bw * 100) if max_bw else 0, 1)
+            rt        = get_rt_stats()
             payload = {
                 **stats,
-                "limit":          max_bw,
-                "remaining":      remaining,
-                "percentage":     pct,
-                "bandwidth_mode": bw_mode,
+                "limit":             max_bw,
+                "remaining":         remaining,
+                "percentage":        pct,
+                "bandwidth_mode":    bw_mode,
+                "active_sessions":   get_active_session_count(),
+                "rt_bytes_per_sec":  rt["bytes_per_sec"],
+                "rt_bytes_served":   rt["total_bytes_served"],
                 "formatted": {
                     "total_bandwidth": format_size(used),
                     "today_bandwidth": format_size(today),
@@ -314,7 +323,7 @@ def build_app(bot: Bot, database) -> web.Application:
             info = _bot_info(bot)
             payload = {
                 "status":       "ok",
-                "bot_status":   "running" if getattr(bot, "me", None) else "initializing",
+                "bot_status":   "running" if Config.BOT_INFO else "initializing",
                 "bot_name":     info["bot_name"],
                 "bot_username": info["bot_username"],
                 "bot_id":       info["bot_id"],
@@ -324,6 +333,76 @@ def build_app(bot: Bot, database) -> web.Application:
             return web.Response(text=json.dumps(payload), content_type="application/json")
         except Exception as exc:
             logger.error("api_health error: %s", exc)
+            return web.json_response({"error": str(exc)}, status=500)
+
+    # ------------------------------------------------------------------
+    # Real-time SSE endpoint  GET /api/live
+    # ------------------------------------------------------------------
+    async def api_live_sse(request: web.Request):
+        """Server-Sent Events stream: pushes bandwidth stats every ~1 second."""
+        response = web.StreamResponse(
+            status=200,
+            headers={
+                "Content-Type":  "text/event-stream",
+                "Cache-Control": "no-cache",
+                "Connection":    "keep-alive",
+                "Access-Control-Allow-Origin": "*",
+                "X-Accel-Buffering": "no",   # disable Nginx proxy buffering
+            },
+        )
+        await response.prepare(request)
+
+        q = await subscribe_sse()
+        try:
+            # Send an immediate snapshot so the client doesn't wait 1 second
+            rt = get_rt_stats()
+            snapshot = {
+                "total_bytes_served": rt["total_bytes_served"],
+                "active_sessions":    rt["active_sessions"],
+                "bytes_per_sec":      rt["bytes_per_sec"],
+            }
+            data = json.dumps(snapshot)
+            await response.write(f"data: {data}\n\n".encode())
+
+            while True:
+                try:
+                    snapshot = await asyncio.wait_for(q.get(), timeout=30.0)
+                    data = json.dumps(snapshot)
+                    await response.write(f"data: {data}\n\n".encode())
+                except asyncio.TimeoutError:
+                    # Heartbeat comment to keep the connection alive through proxies
+                    await response.write(b": heartbeat\n\n")
+                except (ConnectionResetError, BrokenPipeError):
+                    break
+
+        except asyncio.CancelledError:
+            pass
+        except Exception as exc:
+            logger.debug("SSE client disconnected: %s", exc)
+        finally:
+            await unsubscribe_sse(q)
+
+        return response
+
+    # ------------------------------------------------------------------
+    # Real-time snapshot endpoint  GET /api/rt  (JSON, no streaming)
+    # ------------------------------------------------------------------
+    async def api_rt(request: web.Request):
+        """Return a single JSON snapshot of real-time stats."""
+        try:
+            rt = get_rt_stats()
+            payload = {
+                "total_bytes_served":  rt["total_bytes_served"],
+                "active_sessions":     rt["active_sessions"],
+                "bytes_per_sec":       rt["bytes_per_sec"],
+                "formatted": {
+                    "total_bytes_served": format_size(rt["total_bytes_served"]),
+                    "bytes_per_sec":      format_size(int(rt["bytes_per_sec"])) + "/s",
+                },
+            }
+            return web.Response(text=json.dumps(payload), content_type="application/json")
+        except Exception as exc:
+            logger.error("api_rt error: %s", exc)
             return web.json_response({"error": str(exc)}, status=500)
 
     async def stats_endpoint(request: web.Request):
@@ -348,6 +427,8 @@ def build_app(bot: Bot, database) -> web.Application:
     app.router.add_get("/api/stats",             api_stats)
     app.router.add_get("/api/bandwidth",         api_bandwidth)
     app.router.add_get("/api/health",            api_health)
+    app.router.add_get("/api/live",              api_live_sse)   # SSE real-time feed
+    app.router.add_get("/api/rt",                api_rt)         # one-shot RT snapshot
     app.router.add_get("/stats",                 stats_endpoint)
     app.router.add_get("/bandwidth",             bandwidth_endpoint)
     app.router.add_get("/health",                health_endpoint)

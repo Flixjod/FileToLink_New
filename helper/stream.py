@@ -3,7 +3,7 @@ import logging
 import mimetypes
 import math
 import time
-from typing import Dict, Optional, Set, Tuple, Union
+from typing import Dict, List, Optional, Set, Tuple, Union
 
 from aiohttp import web
 from pyrogram import Client, utils, raw
@@ -16,16 +16,24 @@ from database import Database
 
 logger = logging.getLogger(__name__)
 
-# Telegram hard-caps upload.GetFile at 1 MB per request.
-CHUNK_SIZE = 1024 * 1024          # 1 MB per Telegram RPC
-FIRST_CHUNK_SIZE = 64 * 1024      # 64 KB — minimal TTFB startup slice
-PREFETCH_COUNT = 12               # chunks queued ahead of writer
-_MAX_CHUNK_RETRIES = 5
-_RETRY_BACKOFF = 0.1              # faster retry backoff
-_RPC_TIMEOUT = 10.0
-_FILE_CACHE_TTL = 5 * 60          # 5 minutes inactivity TTL
-_SEEK_INITIAL_SIZE = 64 * 1024    # 64 KB initial slice on seek
+# ---------------------------------------------------------------------------
+# Chunk-size constants
+# ---------------------------------------------------------------------------
+CHUNK_SIZE        = 1024 * 1024   # 1 MB  — stable playback (Telegram hard limit)
+STARTUP_CHUNK_SIZE = 128 * 1024   # 128 KB — fast initial TTFB
+SEEK_CHUNK_SIZE    = 64  * 1024   # 64 KB  — instant seek response
+PREFETCH_COUNT     = 12           # chunks queued ahead of writer
 
+_MAX_CHUNK_RETRIES      = 5
+_RETRY_BACKOFF          = 0.1
+_RPC_TIMEOUT            = 10.0
+_FILE_CACHE_TTL         = 5 * 60  # 5 minutes inactivity TTL (file metadata)
+_SESSION_TTL            = 30
+_SESSION_HEARTBEAT_INTERVAL = 5
+
+# ---------------------------------------------------------------------------
+# MIME helpers
+# ---------------------------------------------------------------------------
 MIME_TYPE_MAP = {
     "video":    "video/mp4",
     "audio":    "audio/mpeg",
@@ -69,25 +77,169 @@ _BROWSER_NATIVE_AUDIO = {
     "audio/x-aac",
 }
 
+# ---------------------------------------------------------------------------
 # Session tracking: session_key → last-heartbeat timestamp
+# ---------------------------------------------------------------------------
 _active_sessions: Dict[str, float] = {}
 _sessions_lock = asyncio.Lock()
-_SESSION_TTL = 30
-_SESSION_HEARTBEAT_INTERVAL = 5
 
+# ---------------------------------------------------------------------------
 # Bandwidth dedup
+# ---------------------------------------------------------------------------
 _bw_tracked: Dict[Tuple[str, str, int], float] = {}
 _bw_lock = asyncio.Lock()
 _BW_DEDUP_TTL = 60
 
+# ---------------------------------------------------------------------------
+# Real-Time Bandwidth Analytics (SSE)
+# ---------------------------------------------------------------------------
+# In-memory live stats updated on every chunk write
+_rt_stats: Dict[str, object] = {
+    "total_bytes_served":  0,       # cumulative bytes served this process lifetime
+    "active_sessions":     0,       # current active streaming sessions
+    "bytes_last_window":   0,       # bytes served in the last 1-second window
+    "bytes_per_sec":       0.0,     # rolling 1-second throughput
+    "last_window_reset":   time.monotonic(),
+}
+_rt_lock = asyncio.Lock()
+
+# SSE subscriber queues: each connected dashboard gets its own queue
+_sse_subscribers: List[asyncio.Queue] = []
+_sse_lock = asyncio.Lock()
+
+_SSE_PUSH_INTERVAL = 1.0   # push update every second
+
+
+async def _rt_record_bytes(n: int) -> None:
+    """Increment the real-time byte counters; called after every chunk write."""
+    async with _rt_lock:
+        _rt_stats["total_bytes_served"] += n
+        _rt_stats["bytes_last_window"]  += n
+
+
+async def _rt_ticker() -> None:
+    """Background coroutine: every second compute bytes/sec and push SSE events."""
+    while True:
+        try:
+            await asyncio.sleep(_SSE_PUSH_INTERVAL)
+            now = time.monotonic()
+
+            async with _rt_lock:
+                elapsed = now - _rt_stats["last_window_reset"]
+                bps = _rt_stats["bytes_last_window"] / elapsed if elapsed > 0 else 0.0
+                _rt_stats["bytes_per_sec"]     = bps
+                _rt_stats["bytes_last_window"] = 0
+                _rt_stats["last_window_reset"] = now
+                _rt_stats["active_sessions"]   = get_active_session_count()
+
+                snapshot = {
+                    "total_bytes_served": _rt_stats["total_bytes_served"],
+                    "active_sessions":    _rt_stats["active_sessions"],
+                    "bytes_per_sec":      round(bps, 2),
+                }
+
+            # Push to all SSE subscribers (non-blocking)
+            async with _sse_lock:
+                dead: List[asyncio.Queue] = []
+                for q in _sse_subscribers:
+                    try:
+                        q.put_nowait(snapshot)
+                    except asyncio.QueueFull:
+                        dead.append(q)
+                for q in dead:
+                    _sse_subscribers.remove(q)
+
+        except asyncio.CancelledError:
+            break
+        except Exception as exc:
+            logger.debug("_rt_ticker error: %s", exc)
+
+
+def get_rt_stats() -> dict:
+    """Return a synchronous snapshot of the current real-time stats."""
+    return {
+        "total_bytes_served": _rt_stats["total_bytes_served"],
+        "active_sessions":    _rt_stats["active_sessions"],
+        "bytes_per_sec":      _rt_stats["bytes_per_sec"],
+    }
+
+
+async def subscribe_sse() -> asyncio.Queue:
+    """Register a new SSE listener; returns its dedicated queue."""
+    q: asyncio.Queue = asyncio.Queue(maxsize=30)
+    async with _sse_lock:
+        _sse_subscribers.append(q)
+    return q
+
+
+async def unsubscribe_sse(q: asyncio.Queue) -> None:
+    """Remove an SSE listener."""
+    async with _sse_lock:
+        try:
+            _sse_subscribers.remove(q)
+        except ValueError:
+            pass
+
+
+# ---------------------------------------------------------------------------
+# Multi-User Smart Chunk Cache
+# ---------------------------------------------------------------------------
+# Cache key: (file_hash, chunk_offset) → (chunk_bytes, expire_monotonic)
+_chunk_cache: Dict[Tuple[str, int], Tuple[bytes, float]] = {}
+_chunk_cache_lock = asyncio.Lock()
+_CHUNK_CACHE_TTL  = 5 * 60   # 5 minutes
+
+# Only cache chunks smaller/equal to this — avoids caching huge 1 MB mid-stream
+# chunks which would blow RAM. We cache startup (128 KB) and seek (64 KB) slices.
+_CACHE_MAX_CHUNK  = 256 * 1024   # 256 KB cap per cacheable chunk
+
+
+async def _cache_get(file_hash: str, offset: int) -> Optional[bytes]:
+    """Return a cached chunk or None (also evicts expired entries opportunistically)."""
+    key = (file_hash, offset)
+    now = time.monotonic()
+    async with _chunk_cache_lock:
+        entry = _chunk_cache.get(key)
+        if entry is None:
+            return None
+        data, exp = entry
+        if now > exp:
+            del _chunk_cache[key]
+            return None
+        return data
+
+
+async def _cache_put(file_hash: str, offset: int, data: bytes) -> None:
+    """Store a chunk in the cache (only if it fits within the size cap)."""
+    if len(data) > _CACHE_MAX_CHUNK:
+        return
+    key = (file_hash, offset)
+    exp = time.monotonic() + _CHUNK_CACHE_TTL
+    async with _chunk_cache_lock:
+        _chunk_cache[key] = (data, exp)
+
+
+async def _cache_evict_stale() -> None:
+    """Purge all expired cache entries."""
+    now = time.monotonic()
+    async with _chunk_cache_lock:
+        stale = [k for k, (_, exp) in _chunk_cache.items() if now > exp]
+        for k in stale:
+            del _chunk_cache[k]
+    if stale:
+        logger.debug("chunk_cache: evicted %d stale entries", len(stale))
+
+
+# ---------------------------------------------------------------------------
 # Per-file metadata cache
+# ---------------------------------------------------------------------------
 _file_meta_cache:  Dict[str, dict]  = {}
 _file_cache_atime: Dict[str, float] = {}
 _cache_lock = asyncio.Lock()
 
 # Thumbnail URL cache
-_thumbnail_cache:  Dict[str, Optional[str]] = {}
-_thumb_cache_atime: Dict[str, float] = {}
+_thumbnail_cache:   Dict[str, Optional[str]] = {}
+_thumb_cache_atime: Dict[str, float]         = {}
 
 
 def _mime_for_filename(file_name: str, fallback: str) -> str:
@@ -135,18 +287,13 @@ async def get_thumbnail_url(
     file_data: dict,
     base_url: str,
 ) -> Optional[str]:
-    """Return a publicly-accessible thumbnail URL for external player artwork metadata.
-
-    Returns None if no thumbnail is available.
-    """
+    """Return a publicly-accessible thumbnail URL for external player artwork metadata."""
     now = time.monotonic()
 
-    # Return cached result (including None → no thumbnail)
     if file_hash in _thumbnail_cache:
         _thumb_cache_atime[file_hash] = now
         return _thumbnail_cache[file_hash]
 
-    # Only attempt for video / audio files
     file_type = file_data.get("file_type", "document")
     if file_type not in (
         Config.FILE_TYPE_VIDEO, Config.FILE_TYPE_AUDIO, "video", "audio"
@@ -164,7 +311,6 @@ async def get_thumbnail_url(
             _thumb_cache_atime[file_hash] = now
             return None
 
-        # Check for a thumbnail on the media object
         thumb = None
         if msg.video and msg.video.thumbs:
             thumb = msg.video.thumbs[0]
@@ -178,8 +324,6 @@ async def get_thumbnail_url(
             _thumb_cache_atime[file_hash] = now
             return None
 
-        # Use the stream page OG image as the artwork URL — already served
-        # by the web server with no extra Telegram download needed.
         thumb_url = f"{base_url}/stream/{file_hash}"
         _thumbnail_cache[file_hash] = thumb_url
         _thumb_cache_atime[file_hash] = now
@@ -219,14 +363,108 @@ async def _evict_stale_file_cache() -> None:
         )
 
 
+# ---------------------------------------------------------------------------
+# Session helpers
+# ---------------------------------------------------------------------------
+
+def _prune_stale_sessions() -> None:
+    now = time.monotonic()
+    stale = [k for k, ts in _active_sessions.items() if now - ts > _SESSION_TTL]
+    for k in stale:
+        del _active_sessions[k]
+
+
+def get_active_session_count() -> int:
+    _prune_stale_sessions()
+    return len(_active_sessions)
+
+
+async def _register_session(session_key: str) -> bool:
+    async with _sessions_lock:
+        _prune_stale_sessions()
+        is_new = session_key not in _active_sessions
+        _active_sessions[session_key] = time.monotonic()
+        return is_new
+
+
+async def _unregister_session(session_key: str) -> None:
+    async with _sessions_lock:
+        _active_sessions.pop(session_key, None)
+
+
+async def _heartbeat_session(session_key: str) -> None:
+    async with _sessions_lock:
+        if session_key in _active_sessions:
+            _active_sessions[session_key] = time.monotonic()
+
+
+# ---------------------------------------------------------------------------
+# Bandwidth dedup helper
+# ---------------------------------------------------------------------------
+
+async def _should_track_bandwidth(
+    client_ip: str,
+    message_id: str,
+    from_bytes: int,
+) -> bool:
+    key = (client_ip, message_id, from_bytes)
+    now = time.monotonic()
+    async with _bw_lock:
+        expired = [k for k, exp in _bw_tracked.items() if now > exp]
+        for k in expired:
+            del _bw_tracked[k]
+
+        if key in _bw_tracked:
+            return False
+
+        _bw_tracked[key] = now + _BW_DEDUP_TTL
+        return True
+
+
+# ---------------------------------------------------------------------------
+# Network helpers
+# ---------------------------------------------------------------------------
+
+def _get_client_ip(request: web.Request) -> str:
+    forwarded = request.headers.get("X-Forwarded-For", "")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.remote or "unknown"
+
+
+def _parse_range(range_header: str, file_size: int):
+    """Parse HTTP Range header and return (from_bytes, until_bytes)."""
+    if range_header:
+        try:
+            raw_range   = range_header.replace("bytes=", "").split(",")[0].strip()
+            start_str, end_str = raw_range.split("-")
+            from_bytes  = int(start_str) if start_str else 0
+            until_bytes = int(end_str)   if end_str   else file_size - 1
+        except (ValueError, AttributeError):
+            from_bytes  = 0
+            until_bytes = file_size - 1
+    else:
+        from_bytes  = 0
+        until_bytes = file_size - 1
+
+    from_bytes  = max(0, from_bytes)
+    until_bytes = min(until_bytes, file_size - 1)
+    return from_bytes, until_bytes
+
+
+# ---------------------------------------------------------------------------
+# ByteStreamer — Telegram RPC layer
+# ---------------------------------------------------------------------------
+
 class ByteStreamer:
 
     def __init__(self, client: Client):
         self.client: Client = client
         self.cached_file_ids: Dict[str, FileId] = {}
         self._background_tasks: Set[asyncio.Task] = set()
-        # Periodic cache cleaner: runs every 2 minutes to evict stale entries
+        # Periodic cache cleaners
         self._start_background_task(self._cache_cleaner())
+        self._start_background_task(_rt_ticker())
 
     def _start_background_task(self, coro) -> asyncio.Task:
         task = asyncio.ensure_future(coro)
@@ -353,24 +591,52 @@ class ByteStreamer:
     async def yield_file(
         self,
         file_id: FileId,
+        file_hash: str,
         offset: int,
         first_part_cut: int,
         last_part_cut: int,
         part_count: int,
         chunk_size: int,
     ):
-        """Yield file chunks from Telegram with prefetch and retry logic."""
+        """Yield file chunks from Telegram with prefetch, retry, and smart cache."""
         client        = self.client
         media_session = await self.generate_media_session(client, file_id)
         location      = await self.get_location(file_id)
 
-        # Queue: prefetch window + extra slots for the writer
         queue: asyncio.Queue = asyncio.Queue(maxsize=PREFETCH_COUNT + 4)
         fetch_task: asyncio.Task | None = None
 
         async def _fetch_worker():
             current_offset = offset
             for part_idx in range(part_count):
+                # ----------------------------------------------------------
+                # Try Smart Cache first
+                # ----------------------------------------------------------
+                cached = await _cache_get(file_hash, current_offset)
+                if cached is not None:
+                    # Apply cut on first / last part same as live path
+                    if part_count == 1:
+                        sliced = cached[first_part_cut:last_part_cut]
+                    elif part_idx == 0:
+                        sliced = cached[first_part_cut:]
+                    elif part_idx == part_count - 1:
+                        sliced = cached[:last_part_cut]
+                    else:
+                        sliced = cached
+                    try:
+                        await queue.put(sliced)
+                    except asyncio.CancelledError:
+                        return
+                    current_offset += chunk_size
+                    logger.debug(
+                        "cache_hit  hash=%s  offset=%d  size=%d",
+                        file_hash[:8], current_offset - chunk_size, len(sliced),
+                    )
+                    continue
+
+                # ----------------------------------------------------------
+                # Fetch from Telegram
+                # ----------------------------------------------------------
                 for attempt in range(_MAX_CHUNK_RETRIES):
                     try:
                         r = await asyncio.wait_for(
@@ -446,6 +712,9 @@ class ByteStreamer:
                     await queue.put(None)
                     return
 
+                # Store raw chunk in smart cache before slicing
+                await _cache_put(file_hash, current_offset, bytes(chunk))
+
                 if part_count == 1:
                     sliced = chunk[first_part_cut:last_part_cut]
                 elif part_idx == 0:
@@ -509,16 +778,14 @@ class ByteStreamer:
             logger.debug("yield_file finished after %d part(s)", parts_yielded)
 
     async def _cache_cleaner(self) -> None:
-        """Background task: evict stale file-meta/thumbnail cache every 2 min."""
+        """Background task: evict stale caches every 2 minutes."""
         while True:
             try:
                 await asyncio.sleep(120)
-                # Evict per-file caches idle for > 5 min
                 await _evict_stale_file_cache()
-                # Evict stale FileId entries (30 min TTL)
+                await _cache_evict_stale()
+                # Clear FileId cache every 30 min
                 now = time.monotonic()
-                # FileId cache doesn't carry timestamps — clear fully every 30 min
-                # via a separate counter
                 if not hasattr(self, '_last_full_clear'):
                     self._last_full_clear = now
                 if now - self._last_full_clear > 1800:
@@ -532,82 +799,9 @@ class ByteStreamer:
                 logger.error("ByteStreamer._cache_cleaner error: %s", exc)
 
 
-def _parse_range(range_header: str, file_size: int):
-    """Parse HTTP Range header and return (from_bytes, until_bytes)."""
-    if range_header:
-        try:
-            raw_range   = range_header.replace("bytes=", "").split(",")[0].strip()
-            start_str, end_str = raw_range.split("-")
-            from_bytes  = int(start_str) if start_str else 0
-            until_bytes = int(end_str)   if end_str   else file_size - 1
-        except (ValueError, AttributeError):
-            from_bytes  = 0
-            until_bytes = file_size - 1
-    else:
-        from_bytes  = 0
-        until_bytes = file_size - 1
-
-    from_bytes  = max(0, from_bytes)
-    until_bytes = min(until_bytes, file_size - 1)
-    return from_bytes, until_bytes
-
-
-def _get_client_ip(request: web.Request) -> str:
-    forwarded = request.headers.get("X-Forwarded-For", "")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    return request.remote or "unknown"
-
-
-async def _register_session(session_key: str) -> bool:
-    async with _sessions_lock:
-        _prune_stale_sessions()
-        is_new = session_key not in _active_sessions
-        _active_sessions[session_key] = time.monotonic()
-        return is_new
-
-
-async def _unregister_session(session_key: str) -> None:
-    async with _sessions_lock:
-        _active_sessions.pop(session_key, None)
-
-
-async def _heartbeat_session(session_key: str) -> None:
-    async with _sessions_lock:
-        if session_key in _active_sessions:
-            _active_sessions[session_key] = time.monotonic()
-
-
-def _prune_stale_sessions() -> None:
-    now = time.monotonic()
-    stale = [k for k, ts in _active_sessions.items() if now - ts > _SESSION_TTL]
-    for k in stale:
-        del _active_sessions[k]
-
-
-def get_active_session_count() -> int:
-    _prune_stale_sessions()
-    return len(_active_sessions)
-
-
-async def _should_track_bandwidth(
-    client_ip: str,
-    message_id: str,
-    from_bytes: int,
-) -> bool:
-    key = (client_ip, message_id, from_bytes)
-    now = time.monotonic()
-    async with _bw_lock:
-        expired = [k for k, exp in _bw_tracked.items() if now > exp]
-        for k in expired:
-            del _bw_tracked[k]
-
-        if key in _bw_tracked:
-            return False
-
-        _bw_tracked[key] = now + _BW_DEDUP_TTL
-        return True
-
+# ---------------------------------------------------------------------------
+# StreamingService — HTTP layer
+# ---------------------------------------------------------------------------
 
 class StreamingService:
 
@@ -622,16 +816,19 @@ class StreamingService:
         file_hash: str,
         is_download: bool = False,
     ) -> web.StreamResponse:
-        """Handle an HTTP streaming request with efficient range support."""
+        """Handle an HTTP streaming request with intelligent chunking."""
         range_header     = request.headers.get("Range", "")
         is_range_request = bool(range_header)
         client_ip        = _get_client_ip(request)
         now              = time.monotonic()
 
+        # ------------------------------------------------------------------
+        # File metadata (cached)
+        # ------------------------------------------------------------------
         async with _cache_lock:
             file_data = _file_meta_cache.get(file_hash)
             if file_data is not None:
-                _file_cache_atime[file_hash] = now  # refresh access time
+                _file_cache_atime[file_hash] = now
 
         if file_data is None:
             file_data = await self.db.get_file_by_hash(file_hash)
@@ -641,6 +838,9 @@ class StreamingService:
                 _file_meta_cache[file_hash]  = file_data
                 _file_cache_atime[file_hash] = now
 
+        # ------------------------------------------------------------------
+        # Bandwidth guard
+        # ------------------------------------------------------------------
         if Config.get("bandwidth_mode", True):
             stats  = await self.db.get_bandwidth_stats()
             max_bw = Config.get("max_bandwidth", 107374182400)
@@ -673,17 +873,42 @@ class StreamingService:
         until_bytes = min(until_bytes, file_size - 1)
         req_length  = until_bytes - from_bytes + 1
 
-        # Chunk offset calculation
-        offset         = from_bytes - (from_bytes % CHUNK_SIZE)
-        first_part_cut = from_bytes - offset
-        last_part_cut  = (until_bytes % CHUNK_SIZE) + 1
-        part_count     = math.ceil((until_bytes + 1) / CHUNK_SIZE) - (offset // CHUNK_SIZE)
+        # ------------------------------------------------------------------
+        # Intelligent chunk-size selection
+        #
+        #   • from_bytes == 0 → Startup phase  → 128 KB (fast TTFB)
+        #   • from_bytes  > 0 → Seek   phase   → 64 KB  (instant response)
+        #   • Stable stream uses 1 MB after the first chunk
+        # ------------------------------------------------------------------
+        is_startup = (from_bytes == 0)
+        is_seeking = (from_bytes > 0)
+
+        if is_startup:
+            active_chunk_size = STARTUP_CHUNK_SIZE   # 128 KB
+        elif is_seeking:
+            active_chunk_size = SEEK_CHUNK_SIZE       # 64 KB
+        else:
+            active_chunk_size = CHUNK_SIZE            # 1 MB (fallback)
 
         logger.debug(
-            "stream  msg=%s  size=%d  range=%d-%d  offset=%d  parts=%d",
-            message_id, file_size, from_bytes, until_bytes, offset, part_count,
+            "stream  msg=%s  size=%d  range=%d-%d  chunk=%d  mode=%s",
+            message_id, file_size, from_bytes, until_bytes,
+            active_chunk_size,
+            "startup" if is_startup else "seek",
         )
 
+        # Align offset to chunk boundary using active chunk size
+        offset         = from_bytes - (from_bytes % active_chunk_size)
+        first_part_cut = from_bytes - offset
+        last_part_cut  = (until_bytes % active_chunk_size) + 1
+        part_count     = (
+            math.ceil((until_bytes + 1) / active_chunk_size)
+            - (offset // active_chunk_size)
+        )
+
+        # ------------------------------------------------------------------
+        # MIME / headers
+        # ------------------------------------------------------------------
         mime = (
             file_data.get("mime_type")
             or _mime_for_filename(
@@ -695,6 +920,7 @@ class StreamingService:
             mime = "application/octet-stream"
 
         disposition = "attachment" if is_download else "inline"
+        # Always respond 206 for range requests; 200 for full-file requests
         status      = 206 if is_range_request else 200
 
         headers = {
@@ -739,33 +965,38 @@ class StreamingService:
         session_key    = f"{file_hash}:{client_ip}"
         bytes_sent     = 0
         last_heartbeat = time.monotonic()
-        is_first_chunk = True
+        chunk_index    = 0
 
         try:
             async for chunk in self.streamer.yield_file(
                 file_id,
+                file_hash,
                 offset,
                 first_part_cut,
                 last_part_cut,
                 part_count,
-                CHUNK_SIZE,
+                active_chunk_size,
             ):
                 try:
-                    # For the very first chunk, send a small slice immediately
-                    # to minimize TTFB, then send the remainder
-                    if is_first_chunk and len(chunk) > FIRST_CHUNK_SIZE:
-                        await response.write(chunk[:FIRST_CHUNK_SIZE])
-                        await response.write(chunk[FIRST_CHUNK_SIZE:])
-                        bytes_sent += len(chunk)
+                    # Startup phase: send first tiny slice immediately for
+                    # minimum TTFB, then transition to 1 MB stable chunks
+                    if chunk_index == 0 and is_startup and len(chunk) > STARTUP_CHUNK_SIZE:
+                        await response.write(chunk[:STARTUP_CHUNK_SIZE])
+                        await response.write(chunk[STARTUP_CHUNK_SIZE:])
                     else:
                         await response.write(chunk)
-                        bytes_sent += len(chunk)
-                    is_first_chunk = False
 
-                    now = time.monotonic()
-                    if now - last_heartbeat >= _SESSION_HEARTBEAT_INTERVAL:
+                    n = len(chunk)
+                    bytes_sent += n
+                    chunk_index += 1
+
+                    # Update real-time bandwidth counters
+                    await _rt_record_bytes(n)
+
+                    now_t = time.monotonic()
+                    if now_t - last_heartbeat >= _SESSION_HEARTBEAT_INTERVAL:
                         await _heartbeat_session(session_key)
-                        last_heartbeat = now
+                        last_heartbeat = now_t
 
                 except (ConnectionResetError, BrokenPipeError):
                     logger.debug(
@@ -792,7 +1023,9 @@ class StreamingService:
         except Exception:
             pass
 
-        # Bandwidth accounting with deduplication
+        # ------------------------------------------------------------------
+        # Bandwidth accounting (DB) with deduplication
+        # ------------------------------------------------------------------
         if bytes_sent > 0:
             should_track = await _should_track_bandwidth(client_ip, message_id, from_bytes)
             if should_track:
