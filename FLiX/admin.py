@@ -329,7 +329,7 @@ async def settings_callback(client: Client, callback: CallbackQuery):
             )
 
         try:
-            me     = await client.get_me()
+            me     = Config.BOT_INFO
             member = await client.get_chat_member(value, me.id)
 
             if member.status not in (ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.OWNER):

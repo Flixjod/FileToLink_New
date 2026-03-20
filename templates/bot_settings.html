@@ -726,6 +726,54 @@
           </div>
         </div>
 
+        <!-- ── Live Bandwidth Analytics ────────────────────── -->
+        <div class="info-section" style="margin-top:18px;">
+          <div class="info-section-title" style="display:flex;align-items:center;gap:8px;">
+            <i class="fa-solid fa-bolt"></i> Live Bandwidth Analytics
+            <span class="live-indicator" style="margin-left:auto;font-size:0.75rem;">
+              <span class="live-dot" id="sse-dot" style="background:#888;"></span>
+              <span id="sse-status">Connecting…</span>
+            </span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">
+              <span class="il-icon" style="background:rgba(250,112,154,.2)">
+                <i class="fa-solid fa-tower-broadcast" style="color:#fa709a"></i>
+              </span>
+              Active Streams
+            </span>
+            <span class="info-value" id="rt-sessions">{{ active_conns }}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">
+              <span class="il-icon" style="background:rgba(67,233,123,.2)">
+                <i class="fa-solid fa-arrow-up-right-dots" style="color:#43e97b"></i>
+              </span>
+              Throughput (bytes/s)
+            </span>
+            <span class="info-value" id="rt-bps">{{ rt_bytes_per_sec }}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">
+              <span class="il-icon" style="background:rgba(79,172,254,.2)">
+                <i class="fa-solid fa-database" style="color:#4facfe"></i>
+              </span>
+              Total Served (session)
+            </span>
+            <span class="info-value" id="rt-total">{{ rt_bytes_served }}</span>
+          </div>
+          <!-- Sparkline throughput bar -->
+          <div style="margin-top:10px;">
+            <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+              <span style="font-size:0.72rem;color:var(--text-muted);">Throughput</span>
+              <span style="font-size:0.72rem;color:var(--text-muted);" id="rt-bar-label">0 B/s</span>
+            </div>
+            <div class="bw-bar-bg" style="height:6px;">
+              <div id="rt-bps-bar" class="bw-bar-fill" style="width:0%;transition:width .4s ease;"></div>
+            </div>
+          </div>
+        </div>
+
         <div class="btn-row">
           <a href="/" class="btn btn-primary"><i class="fa-solid fa-house"></i> Home</a>
           <a href="https://t.me/{{ bot_username }}" target="_blank" class="btn btn-tg">
@@ -833,6 +881,13 @@
               Live Streaming Sessions
             </span>
             <span class="info-value" id="h-conns">{{ active_conns }}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">
+              <span class="il-icon" style="background:rgba(67,233,123,.2)"><i class="fa-solid fa-arrow-up-right-dots" style="color:#43e97b"></i></span>
+              Bandwidth Throughput
+            </span>
+            <span class="info-value" id="h-bps">{{ rt_bytes_per_sec }}</span>
           </div>
         </div>
 
@@ -980,6 +1035,11 @@
 
       const connEl = document.getElementById('h-conns');
       if (connEl) connEl.textContent = (d.active_conns != null ? d.active_conns : '0');
+      // Note: h-bps is updated live via SSE; only fall back here if not connected
+      const hBpsEl = document.getElementById('h-bps');
+      if (hBpsEl && hBpsEl.textContent === '{{ rt_bytes_per_sec }}') {
+        hBpsEl.textContent = '—';
+      }
 
       setBadge('h-server', 'badge-ok', 'Online');
       setBadge('h-api',    'badge-ok', 'Operational');
@@ -1017,6 +1077,81 @@
   // Always start health monitoring at page load so Live Streaming
   // Sessions is updated even before the Health tab is opened.
   startHealthUpdates();
+
+  // ── Real-Time SSE Bandwidth Feed ───────────────────────────
+  (function initSSE() {
+    let sse = null;
+    let reconnectDelay = 1500;
+    const MAX_BPS_DISPLAY = 50 * 1024 * 1024; // 50 MB/s max scale for bar
+
+    function fmtBytes(n) {
+      if (n == null || isNaN(n)) return '—';
+      n = Number(n);
+      if (n < 1024) return n.toFixed(0) + ' B';
+      if (n < 1048576) return (n/1024).toFixed(1) + ' KB';
+      if (n < 1073741824) return (n/1048576).toFixed(2) + ' MB';
+      return (n/1073741824).toFixed(2) + ' GB';
+    }
+
+    function applySnapshot(d) {
+      const bps       = d.bytes_per_sec   ?? 0;
+      const sessions  = d.active_sessions ?? 0;
+      const total     = d.total_bytes_served ?? 0;
+
+      // Bandwidth panel live widgets
+      const rtSess  = document.getElementById('rt-sessions');
+      const rtBps   = document.getElementById('rt-bps');
+      const rtTotal = document.getElementById('rt-total');
+      const rtBar   = document.getElementById('rt-bps-bar');
+      const rtLabel = document.getElementById('rt-bar-label');
+      if (rtSess)  rtSess.textContent  = sessions;
+      if (rtBps)   rtBps.textContent   = fmtBytes(bps) + '/s';
+      if (rtTotal) rtTotal.textContent = fmtBytes(total);
+      if (rtBar) {
+        const pct = Math.min(100, (bps / MAX_BPS_DISPLAY) * 100);
+        rtBar.style.width = pct + '%';
+        rtBar.className = 'bw-bar-fill' + (pct > 80 ? ' crit' : pct > 50 ? ' warn' : '');
+      }
+      if (rtLabel) rtLabel.textContent = fmtBytes(bps) + '/s';
+
+      // Health panel mirrors
+      const hConns = document.getElementById('h-conns');
+      const hBps   = document.getElementById('h-bps');
+      if (hConns) hConns.textContent = sessions;
+      if (hBps)   hBps.textContent   = fmtBytes(bps) + '/s';
+    }
+
+    function connect() {
+      sse = new EventSource('/api/live');
+
+      sse.onopen = function() {
+        reconnectDelay = 1500;
+        const dot    = document.getElementById('sse-dot');
+        const status = document.getElementById('sse-status');
+        if (dot)    { dot.style.background = '#43e97b'; }
+        if (status) status.textContent = 'Live';
+      };
+
+      sse.onmessage = function(ev) {
+        try {
+          const d = JSON.parse(ev.data);
+          applySnapshot(d);
+        } catch(e) { /* ignore parse errors */ }
+      };
+
+      sse.onerror = function() {
+        sse.close();
+        const dot    = document.getElementById('sse-dot');
+        const status = document.getElementById('sse-status');
+        if (dot)    { dot.style.background = '#ff6b6b'; }
+        if (status) status.textContent = 'Reconnecting…';
+        setTimeout(connect, reconnectDelay);
+        reconnectDelay = Math.min(reconnectDelay * 2, 30000);
+      };
+    }
+
+    connect();
+  })();
   </script>
 </body>
 </html>
