@@ -13,6 +13,7 @@ from bot import Bot
 from config import Config
 from database import Database
 from helper import StreamingService, check_bandwidth_limit, format_size
+from helper.bandwidth import check_user_bandwidth, is_exempt_from_user_bw
 from helper.stream import (
     get_active_session_count,
     _register_session,
@@ -26,6 +27,9 @@ from helper.stream import (
 logger = logging.getLogger(__name__)
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
+
+DEFAULT_BOT_NAME     = "FLiX FileStream"
+DEFAULT_BOT_USERNAME = "FLiXStreamBot"
 
 
 def _bot_info(bot: Bot) -> dict:
@@ -101,8 +105,12 @@ def build_app(bot: Bot, database) -> web.Application:
         client_ip   = _get_client_ip(request)
         session_key = f"{file_hash}:{client_ip}"
         await _register_session(session_key)
+        # Extract user_id from query params if present (for per-user BW tracking)
+        user_id = request.rel_url.query.get("uid", None)
         try:
-            return await streaming_service.stream_file(request, file_hash, is_download=is_download)
+            return await streaming_service.stream_file(
+                request, file_hash, is_download=is_download, user_id=user_id
+            )
         finally:
             await _unregister_session(session_key)
 

@@ -14,6 +14,7 @@ from pyrogram.types import (
 
 from config import Config
 from helper import Cryptic, format_size, escape_markdown, small_caps, check_fsub, check_owner
+from helper.bandwidth import check_user_bandwidth, is_exempt_from_user_bw
 from database import db
 
 logger = logging.getLogger(__name__)
@@ -38,6 +39,34 @@ async def file_handler(client: Client, message: Message):
     user    = message.from_user
     user_id = user.id
 
+    # ── Ban check ──────────────────────────────────────────────────────────
+    is_banned, ban_doc = await db.is_banned(str(user_id))
+    if is_banned and ban_doc:
+        reason = ban_doc.get("reason", "No reason provided")
+        expires = ban_doc.get("expires_at")
+        exp_str = ""
+        if expires:
+            from datetime import datetime
+            if isinstance(expires, str):
+                try:
+                    expires = datetime.fromisoformat(expires)
+                except Exception:
+                    expires = None
+            if expires:
+                exp_str = f"\n⏰ **{small_caps('ban expires')}:** `{expires.strftime('%Y-%m-%d %H:%M')} UTC`"
+        await client.send_message(
+            chat_id=message.chat.id,
+            text=(
+                f"🚫 **{small_caps('you are banned')}**\n\n"
+                f"📝 **{small_caps('reason')}:** {reason}"
+                f"{exp_str}\n\n"
+                "ᴄᴏɴᴛᴀᴄᴛ ᴀɴ ᴀᴅᴍɪɴɪꜱᴛʀᴀᴛᴏʀ ɪꜰ ʏᴏᴜ ᴛʜɪɴᴋ ᴛʜɪꜱ ɪꜱ ᴀ ᴍɪꜱᴛᴀᴋᴇ."
+            ),
+            reply_to_message_id=message.id,
+            disable_web_page_preview=True,
+        )
+        return
+
     if Config.get("fsub_mode", False):
         if not await check_fsub(client, message):
             return
@@ -51,6 +80,7 @@ async def file_handler(client: Client, message: Message):
         )
         return
 
+    # ── Global bandwidth check ─────────────────────────────────────────────
     stats         = await db.get_bandwidth_stats()
     max_bandwidth = Config.get("max_bandwidth", 107374182400)
     if Config.get("bandwidth_mode", True) and stats["total_bandwidth"] >= max_bandwidth:
@@ -64,6 +94,44 @@ async def file_handler(client: Client, message: Message):
             disable_web_page_preview=True,
         )
         return
+
+    # ── Per-user bandwidth check (free users only) ─────────────────────────
+    exempt = await is_exempt_from_user_bw(db, user_id)
+    if not exempt:
+        ubw = await check_user_bandwidth(db, user_id)
+        if not ubw.get("skipped") and not ubw.get("allowed"):
+            from datetime import datetime
+            window_end = ubw.get("window_end")
+            if isinstance(window_end, datetime):
+                reset_str = window_end.strftime("%Y-%m-%d %H:%M UTC")
+            else:
+                reset_str = "ꜱᴏᴏɴ"
+            await client.send_message(
+                chat_id=message.chat.id,
+                text=(
+                    f"⚠️ **{small_caps('personal bandwidth limit reached')}!**\n\n"
+                    f"📤 **{small_caps('used')}:** `{format_size(ubw['used'])}` / `{format_size(ubw['limit'])}`\n"
+                    f"🔄 **{small_caps('resets on')}:** `{reset_str}`\n\n"
+                    "ʏᴏᴜʀ ꜰʀᴇᴇ ʙᴀɴᴅᴡɪᴅᴛʜ ꜰᴏʀ ᴛʜɪꜱ 30-ᴅᴀʏ ᴘᴇʀɪᴏᴅ ʜᴀꜱ ʙᴇᴇɴ ᴇxʜᴀᴜꜱᴛᴇᴅ."
+                ),
+                reply_to_message_id=message.id,
+                disable_web_page_preview=True,
+            )
+            return
+        elif not ubw.get("skipped") and ubw.get("warning"):
+            # 80–90% warning — send but also notify
+            try:
+                await client.send_message(
+                    chat_id=message.chat.id,
+                    text=(
+                        f"⚠️ **{small_caps('bandwidth warning')}**\n\n"
+                        f"📤 ʏᴏᴜ'ᴠᴇ ᴜꜱᴇᴅ `{ubw['pct']:.1f}%` ᴏꜰ ʏᴏᴜʀ ᴍᴏɴᴛʜʟʏ ʙᴀɴᴅᴡɪᴅᴛʜ.\n"
+                        f"📉 **{small_caps('remaining')}:** `{format_size(ubw['remaining'])}`"
+                    ),
+                    disable_web_page_preview=True,
+                )
+            except Exception:
+                pass
 
     if message.document:
         file       = message.document

@@ -53,6 +53,33 @@ async def start_command(client: Client, message: Message):
     user = message.from_user
     bot_info = Config.BOT_INFO 
 
+    # ── Ban check ──────────────────────────────────────────────────────────
+    is_banned, ban_doc = await db.is_banned(str(user.id))
+    if is_banned and ban_doc:
+        reason = ban_doc.get("reason", "No reason provided")
+        expires = ban_doc.get("expires_at")
+        exp_str = ""
+        if expires:
+            from datetime import datetime as _dt
+            if isinstance(expires, str):
+                try:
+                    expires = _dt.fromisoformat(expires)
+                except Exception:
+                    expires = None
+            if expires:
+                exp_str = f"\n⏰ **Expires:** `{expires.strftime('%Y-%m-%d %H:%M')} UTC`"
+        await client.send_message(
+            chat_id=message.chat.id,
+            text=(
+                f"🚫 **You are banned from using this bot.**\n\n"
+                f"📝 **Reason:** {reason}"
+                f"{exp_str}\n\n"
+                "Contact an administrator if you believe this is a mistake."
+            ),
+            reply_to_message_id=message.id,
+        )
+        return
+
     # 1. Register User & Log to Admin Chat
     is_new = await db.register_user_on_start({
         "user_id": str(user.id),

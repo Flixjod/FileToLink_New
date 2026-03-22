@@ -621,6 +621,7 @@ class StreamingService:
         request: web.Request,
         file_hash: str,
         is_download: bool = False,
+        user_id: str = None,
     ) -> web.StreamResponse:
         """Handle an HTTP streaming request with efficient range support."""
         range_header     = request.headers.get("Range", "")
@@ -802,6 +803,16 @@ class StreamingService:
                         "track_bandwidth error: %s", t.exception()
                     )
                 )
+                # Per-user bandwidth tracking (fire-and-forget)
+                if user_id:
+                    u_task = asyncio.ensure_future(
+                        self.db.update_user_bandwidth(str(user_id), bytes_sent)
+                    )
+                    u_task.add_done_callback(
+                        lambda t: t.exception() and logger.error(
+                            "update_user_bandwidth error: %s", t.exception()
+                        )
+                    )
             else:
                 logger.debug(
                     "bw dedup  msg=%s  ip=%s  from=%d  bytes=%d  (skipped)",
