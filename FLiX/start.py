@@ -3,7 +3,7 @@ from pyrogram import Client, filters
 from pyrogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from config import Config
 from database import db
-from helper import format_size, escape_markdown, check_fsub
+from helper import format_size, escape_markdown, check_fsub, small_caps
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +51,23 @@ def show_nav(page: str, user_mention: str, bot_name: str, bot_username: str):
 @Client.on_message(filters.command("start") & filters.private, group=1)
 async def start_command(client: Client, message: Message):
     user = message.from_user
-    bot_info = Config.BOT_INFO 
+    bot_info = Config.BOT_INFO
+
+    # Ban check — show clear message and stop processing
+    if await db.is_banned(str(user.id)):
+        ban_info = await db.get_ban_info(str(user.id))
+        reason   = ban_info.get("reason", "N/A") if ban_info else "N/A"
+        await client.send_message(
+            chat_id=message.chat.id,
+            text=(
+                f"🚫 **{small_caps('access denied')}**\n\n"
+                f"📋 **{small_caps('reason')}:** `{reason}`\n\n"
+                "ʏᴏᴜ ʜᴀᴠᴇ ʙᴇᴇɴ ʙᴀɴɴᴇᴅ ꜰʀᴏᴍ ᴜꜱɪɴɢ ᴛʜɪꜱ ʙᴏᴛ.\n"
+                "ᴄᴏɴᴛᴀᴄᴛ ᴀɴ ᴀᴅᴍɪɴɪꜱᴛʀᴀᴛᴏʀ ɪꜰ ʏᴏᴜ ʙᴇʟɪᴇᴠᴇ ᴛʜɪꜱ ɪꜱ ᴀ ᴍɪꜱᴛᴀᴋᴇ."
+            ),
+            reply_to_message_id=message.id,
+        )
+        return
 
     # 1. Register User & Log to Admin Chat
     is_new = await db.register_user_on_start({

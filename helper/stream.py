@@ -621,6 +621,8 @@ class StreamingService:
         request: web.Request,
         file_hash: str,
         is_download: bool = False,
+        user_id: str = None,
+        is_privileged: bool = False,
     ) -> web.StreamResponse:
         """Handle an HTTP streaming request with efficient range support."""
         range_header     = request.headers.get("Range", "")
@@ -641,11 +643,24 @@ class StreamingService:
                 _file_meta_cache[file_hash]  = file_data
                 _file_cache_atime[file_hash] = now
 
+        # Resolve user_id from file owner if not passed
+        if not user_id:
+            user_id = file_data.get("user_id", "")
+
+        # Global bandwidth limit
         if Config.get("bandwidth_mode", True):
             stats  = await self.db.get_bandwidth_stats()
             max_bw = Config.get("max_bandwidth", 107374182400)
             if max_bw and stats["total_bandwidth"] >= max_bw:
                 raise web.HTTPServiceUnavailable(reason="bandwidth limit exceeded")
+
+        # Per-user bandwidth limit (free users only — skip for privileged)
+        if not is_privileged and Config.get("user_bandwidth_mode", False):
+            max_user_bw = Config.get("max_user_bandwidth", 10737418240)
+            if max_user_bw and user_id:
+                user_bw = await self.db.get_user_bandwidth(str(user_id))
+                if user_bw["used"] >= max_user_bw:
+                    raise web.HTTPServiceUnavailable(reason="user bandwidth limit exceeded")
 
         file_size  = int(file_data["file_size"])
         file_name  = file_data["file_name"]
@@ -796,7 +811,10 @@ class StreamingService:
         if bytes_sent > 0:
             should_track = await _should_track_bandwidth(client_ip, message_id, from_bytes)
             if should_track:
-                task = asyncio.ensure_future(self.db.track_bandwidth(message_id, bytes_sent))
+                _uid = user_id or file_data.get("user_id", "")
+                task = asyncio.ensure_future(
+                    self.db.track_bandwidth(message_id, bytes_sent, user_id=_uid)
+                )
                 task.add_done_callback(
                     lambda t: t.exception() and logger.error(
                         "track_bandwidth error: %s", t.exception()

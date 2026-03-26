@@ -1,5 +1,5 @@
 from motor.motor_asyncio import AsyncIOMotorClient
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 import logging
 
@@ -22,6 +22,12 @@ class Database:
         self.bandwidth  = self.db.bandwidth
         self.sudo_users = self.db.sudo_users
         self.config     = self.db.config
+        self.banned     = self.db.banned_users
+        self.user_bw    = self.db.user_bandwidth
+        # Global bandwidth cycle (30-day rolling window)
+        self.global_bw  = self.db.global_bandwidth_cycle
+        # Action history for ban/sudo
+        self.history    = self.db.action_history
 
     async def init_db(self):
         try:
@@ -53,7 +59,29 @@ class Database:
             if 'user_id' not in sudo_idx:
                 await self.sudo_users.create_index('user_id', unique=True)
 
-            logger.info("✅ ᴅʙ ɪɴᴅᴇxᴇꜱ ʀᴇᴀᴅˏ ᴀʟʟ ɪɴꜱᴛᴀɴᴛ — ꜱᴄɪᴘᴘᴇᴅ ɴᴇᴡ ᴄʀᴇᴀᴛɪᴏɴ ᴏɴʟˏ")
+            # Ban system index
+            banned_idx = await _existing(self.banned)
+            if 'user_id' not in banned_idx:
+                await self.banned.create_index('user_id', unique=True)
+
+            # Per-user bandwidth index
+            ubw_idx = await _existing(self.user_bw)
+            if 'user_id' not in ubw_idx:
+                await self.user_bw.create_index('user_id', unique=True)
+
+            # Global bandwidth cycle index
+            gbw_idx = await _existing(self.global_bw)
+            if 'key' not in gbw_idx:
+                await self.global_bw.create_index('key', unique=True)
+
+            # Action history index
+            hist_idx = await _existing(self.history)
+            if 'created_at' not in hist_idx:
+                await self.history.create_index('created_at')
+            if 'type' not in hist_idx:
+                await self.history.create_index('type')
+
+            logger.info("✅ ᴅʙ ɪɴᴅᴇxᴇꜱ ʀᴇᴀᴅˏ")
             return True
         except Exception as e:
             logger.error("❌ ᴅʙ ɪɴɪᴛ ᴇʀʀᴏʀ: %s", e)
@@ -145,6 +173,92 @@ class Database:
             logger.error("delete user files error: %s", e)
             return 0
 
+    # ─── Global Bandwidth (daily tracking + 30-day cycle) ───────────────────
+
+    async def _get_global_cycle(self) -> Dict:
+        """Get or create the global 30-day bandwidth cycle document."""
+        now = datetime.utcnow()
+        doc = await self.global_bw.find_one({"key": "global"})
+        if doc is None:
+            doc = {
+                "key":         "global",
+                "cycle_start": now,
+                "cycle_end":   now + timedelta(days=30),
+                "used":        0,
+            }
+            await self.global_bw.insert_one(doc)
+        return doc
+
+    async def check_and_reset_global_cycle(self) -> bool:
+        """Auto-reset global bandwidth if 30-day cycle has expired.
+        Returns True if a reset was performed."""
+        try:
+            now = datetime.utcnow()
+            doc = await self.global_bw.find_one({"key": "global"})
+            if doc is None:
+                await self._get_global_cycle()
+                return False
+
+            cycle_start = doc.get("cycle_start", now)
+            elapsed     = (now - cycle_start).total_seconds()
+            if elapsed >= 30 * 86400:
+                # Reset both global_bw and the daily bandwidth collection
+                new_start = now
+                new_end   = now + timedelta(days=30)
+                await self.global_bw.update_one(
+                    {"key": "global"},
+                    {"$set": {
+                        "cycle_start": new_start,
+                        "cycle_end":   new_end,
+                        "used":        0,
+                    }},
+                )
+                await self.bandwidth.delete_many({})
+                await self.files.update_many({}, {"$set": {"bandwidth_used": 0}})
+                logger.info("🔄 global bandwidth 30-day cycle auto-reset")
+                return True
+            return False
+        except Exception as e:
+            logger.error("check_and_reset_global_cycle error: %s", e)
+            return False
+
+    async def get_global_cycle_info(self) -> Dict:
+        """Return cycle_start, cycle_end, days_remaining for the global cycle."""
+        try:
+            now = datetime.utcnow()
+            doc = await self._get_global_cycle()
+            cycle_start   = doc.get("cycle_start", now)
+            cycle_end_raw = doc.get("cycle_end",   cycle_start + timedelta(days=30))
+            elapsed       = (now - cycle_start).total_seconds()
+
+            # Auto-reset if expired
+            if elapsed >= 30 * 86400:
+                await self.check_and_reset_global_cycle()
+                now = datetime.utcnow()
+                doc = await self._get_global_cycle()
+                cycle_start   = doc.get("cycle_start", now)
+                cycle_end_raw = doc.get("cycle_end",   cycle_start + timedelta(days=30))
+
+            remaining_secs  = max(0, (cycle_end_raw - now).total_seconds())
+            days_remaining  = int(remaining_secs / 86400)
+            hours_remaining = int((remaining_secs % 86400) / 3600)
+
+            return {
+                "cycle_start":     cycle_start,
+                "cycle_end":       cycle_end_raw,
+                "days_remaining":  days_remaining,
+                "hours_remaining": hours_remaining,
+            }
+        except Exception as e:
+            logger.error("get_global_cycle_info error: %s", e)
+            now = datetime.utcnow()
+            return {
+                "cycle_start":     now,
+                "cycle_end":       now + timedelta(days=30),
+                "days_remaining":  30,
+                "hours_remaining": 0,
+            }
+
     async def update_bandwidth(self, size: int) -> bool:
         try:
             today = datetime.utcnow().date().isoformat()
@@ -161,26 +275,165 @@ class Database:
             logger.error("update bandwidth error: %s", e)
             return False
 
-    async def track_bandwidth(self, message_id: str, size: int) -> bool:
+    async def track_bandwidth(self, message_id: str, size: int, user_id: str = None) -> bool:
         try:
             await self.files.update_one(
                 {"message_id": message_id},
                 {"$inc": {"bandwidth_used": size}},
             )
             await self.update_bandwidth(size)
+            # Also track per-user bandwidth
+            if user_id:
+                await self.update_user_bandwidth(str(user_id), size)
             return True
         except Exception as e:
             logger.error("track bandwidth error: %s", e)
             return False
 
     async def reset_bandwidth(self) -> bool:
+        """Manual reset of global bandwidth (also resets the 30-day cycle)."""
         try:
+            now = datetime.utcnow()
             await self.bandwidth.delete_many({})
             await self.files.update_many({}, {"$set": {"bandwidth_used": 0}})
+            await self.global_bw.update_one(
+                {"key": "global"},
+                {"$set": {
+                    "cycle_start": now,
+                    "cycle_end":   now + timedelta(days=30),
+                    "used":        0,
+                }},
+                upsert=True,
+            )
             return True
         except Exception as e:
             logger.error("reset bandwidth error: %s", e)
             return False
+
+    async def get_total_bandwidth(self) -> int:
+        try:
+            pipeline = [{"$group": {"_id": None, "total": {"$sum": "$total_bytes"}}}]
+            result   = await self.bandwidth.aggregate(pipeline).to_list(length=1)
+            return result[0]["total"] if result else 0
+        except Exception as e:
+            logger.error("get total bandwidth error: %s", e)
+            return 0
+
+    async def get_bandwidth_stats(self) -> Dict:
+        try:
+            # Auto-reset if cycle expired
+            await self.check_and_reset_global_cycle()
+            total       = await self.get_total_bandwidth()
+            today       = datetime.utcnow().date().isoformat()
+            today_stats = await self.bandwidth.find_one({"date": today})
+            cycle_info  = await self.get_global_cycle_info()
+            return {
+                "total_bandwidth":  total,
+                "today_bandwidth":  today_stats.get("total_bytes", 0) if today_stats else 0,
+                "days_remaining":   cycle_info["days_remaining"],
+                "hours_remaining":  cycle_info["hours_remaining"],
+                "cycle_start":      cycle_info["cycle_start"],
+                "cycle_end":        cycle_info["cycle_end"],
+            }
+        except Exception as e:
+            logger.error("get bandwidth stats error: %s", e)
+            now = datetime.utcnow()
+            return {
+                "total_bandwidth":  0,
+                "today_bandwidth":  0,
+                "days_remaining":   30,
+                "hours_remaining":  0,
+                "cycle_start":      now,
+                "cycle_end":        now + timedelta(days=30),
+            }
+
+    # ─── Per-User Bandwidth (30-day rolling window) ─────────────────────────
+
+    async def update_user_bandwidth(self, user_id: str, size: int) -> bool:
+        """Add `size` bytes to the per-user rolling-30-day counter.
+        Automatically resets the cycle when 30 days have elapsed since cycle_start."""
+        try:
+            now = datetime.utcnow()
+            doc = await self.user_bw.find_one({"user_id": user_id})
+            if doc is None:
+                # First time — create a fresh cycle
+                await self.user_bw.insert_one({
+                    "user_id":     user_id,
+                    "used":        size,
+                    "cycle_start": now,
+                })
+                return True
+
+            cycle_start = doc.get("cycle_start", now)
+            elapsed     = (now - cycle_start).total_seconds()
+            if elapsed >= 30 * 86400:
+                # 30-day window expired — reset
+                await self.user_bw.update_one(
+                    {"user_id": user_id},
+                    {"$set": {"used": size, "cycle_start": now}},
+                )
+            else:
+                await self.user_bw.update_one(
+                    {"user_id": user_id},
+                    {"$inc": {"used": size}},
+                )
+            return True
+        except Exception as e:
+            logger.error("update_user_bandwidth error: %s", e)
+            return False
+
+    async def get_user_bandwidth(self, user_id: str) -> Dict:
+        """Return current bandwidth usage for a user, resetting if cycle expired."""
+        try:
+            now = datetime.utcnow()
+            doc = await self.user_bw.find_one({"user_id": str(user_id)})
+            if doc is None:
+                return {"used": 0, "cycle_start": now, "cycle_end": now + timedelta(days=30),
+                        "days_remaining": 30, "hours_remaining": 0}
+
+            cycle_start = doc.get("cycle_start", now)
+            elapsed     = (now - cycle_start).total_seconds()
+            if elapsed >= 30 * 86400:
+                # Expired — auto-reset in DB and return fresh values
+                await self.user_bw.update_one(
+                    {"user_id": str(user_id)},
+                    {"$set": {"used": 0, "cycle_start": now}},
+                )
+                return {"used": 0, "cycle_start": now, "cycle_end": now + timedelta(days=30),
+                        "days_remaining": 30, "hours_remaining": 0}
+
+            cycle_end       = cycle_start + timedelta(days=30)
+            remaining_secs  = max(0, (cycle_end - now).total_seconds())
+            days_remaining  = int(remaining_secs / 86400)
+            hours_remaining = int((remaining_secs % 86400) / 3600)
+            return {
+                "used":           doc.get("used", 0),
+                "cycle_start":    cycle_start,
+                "cycle_end":      cycle_end,
+                "days_remaining":  days_remaining,
+                "hours_remaining": hours_remaining,
+            }
+        except Exception as e:
+            logger.error("get_user_bandwidth error: %s", e)
+            now = datetime.utcnow()
+            return {"used": 0, "cycle_start": now, "cycle_end": now + timedelta(days=30),
+                    "days_remaining": 30, "hours_remaining": 0}
+
+    async def reset_user_bandwidth(self, user_id: str) -> bool:
+        """Manually reset a specific user's bandwidth cycle."""
+        try:
+            now = datetime.utcnow()
+            await self.user_bw.update_one(
+                {"user_id": str(user_id)},
+                {"$set": {"used": 0, "cycle_start": now}},
+                upsert=True,
+            )
+            return True
+        except Exception as e:
+            logger.error("reset_user_bandwidth error: %s", e)
+            return False
+
+    # ─── User Registration & Lookup ─────────────────────────────────────────
 
     async def register_user_on_start(self, user_data: Dict) -> bool:
         try:
@@ -213,28 +466,6 @@ class Database:
             logger.error("get user error: %s", e)
             return None
 
-    async def get_total_bandwidth(self) -> int:
-        try:
-            pipeline = [{"$group": {"_id": None, "total": {"$sum": "$total_bytes"}}}]
-            result   = await self.bandwidth.aggregate(pipeline).to_list(length=1)
-            return result[0]["total"] if result else 0
-        except Exception as e:
-            logger.error("get total bandwidth error: %s", e)
-            return 0
-
-    async def get_bandwidth_stats(self) -> Dict:
-        try:
-            total       = await self.get_total_bandwidth()
-            today       = datetime.utcnow().date().isoformat()
-            today_stats = await self.bandwidth.find_one({"date": today})
-            return {
-                "total_bandwidth": total,
-                "today_bandwidth": today_stats.get("total_bytes", 0) if today_stats else 0,
-            }
-        except Exception as e:
-            logger.error("get bandwidth stats error: %s", e)
-            return {"total_bandwidth": 0, "today_bandwidth": 0}
-
     async def get_stats(self) -> Dict:
         try:
             total_files = await self.files.count_documents({})
@@ -253,22 +484,65 @@ class Database:
                 "total_bandwidth": 0, "today_bandwidth": 0,
             }
 
+    # ─── Action History (ban/sudo) ───────────────────────────────────────────
+
+    async def add_history(self, action_type: str, target_id: str, by_id: str,
+                          note: str = "", extra: Dict = None) -> bool:
+        """Record an action in the history log.
+        action_type: 'ban', 'unban', 'sudo_add', 'sudo_remove'
+        """
+        try:
+            doc = {
+                "type":       action_type,
+                "target_id":  str(target_id),
+                "by_id":      str(by_id),
+                "note":       note,
+                "created_at": datetime.utcnow(),
+            }
+            if extra:
+                doc.update(extra)
+            await self.history.insert_one(doc)
+            return True
+        except Exception as e:
+            logger.error("add_history error: %s", e)
+            return False
+
+    async def get_history(self, action_type: str = None, limit: int = 20) -> List[Dict]:
+        """Return recent history entries, optionally filtered by type."""
+        try:
+            query  = {"type": action_type} if action_type else {}
+            cursor = self.history.find(query).sort("created_at", -1).limit(limit)
+            return await cursor.to_list(length=limit)
+        except Exception as e:
+            logger.error("get_history error: %s", e)
+            return []
+
+    # ─── Sudo Users ─────────────────────────────────────────────────────────
+
     async def add_sudo_user(self, user_id: str, added_by: str) -> bool:
         try:
             await self.sudo_users.update_one(
                 {"user_id": user_id},
-                {"$set": {"user_id": user_id, "added_by": added_by, "added_at": datetime.utcnow()}},
+                {"$set": {
+                    "user_id":   user_id,
+                    "added_by":  added_by,
+                    "added_at":  datetime.utcnow(),
+                }},
                 upsert=True,
             )
+            await self.add_history("sudo_add", user_id, added_by)
             return True
         except Exception as e:
             logger.error("add sudo user error: %s", e)
             return False
 
-    async def remove_sudo_user(self, user_id: str) -> bool:
+    async def remove_sudo_user(self, user_id: str, removed_by: str = "system") -> bool:
         try:
             result = await self.sudo_users.delete_one({"user_id": user_id})
-            return result.deleted_count > 0
+            if result.deleted_count > 0:
+                await self.add_history("sudo_remove", user_id, removed_by)
+                return True
+            return False
         except Exception as e:
             logger.error("remove sudo user error: %s", e)
             return False
@@ -283,7 +557,7 @@ class Database:
 
     async def get_sudo_users(self) -> List[Dict]:
         try:
-            cursor = self.sudo_users.find({})
+            cursor = self.sudo_users.find({}).sort("added_at", -1)
             return await cursor.to_list(length=None)
         except Exception as e:
             logger.error("get sudo users error: %s", e)
@@ -295,6 +569,70 @@ class Database:
         except Exception as e:
             logger.error("get user count error: %s", e)
             return 0
+
+    # ─── Ban System ─────────────────────────────────────────────────────────
+
+    async def ban_user(self, user_id: str, banned_by: str, reason: str = "") -> bool:
+        """Ban a user. Returns True on success."""
+        try:
+            final_reason = reason or "No reason provided"
+            await self.banned.update_one(
+                {"user_id": str(user_id)},
+                {"$set": {
+                    "user_id":   str(user_id),
+                    "banned_by": str(banned_by),
+                    "reason":    final_reason,
+                    "banned_at": datetime.utcnow(),
+                }},
+                upsert=True,
+            )
+            await self.add_history("ban", user_id, banned_by, note=final_reason)
+            logger.info("🚫 User %s banned by %s", user_id, banned_by)
+            return True
+        except Exception as e:
+            logger.error("ban_user error: %s", e)
+            return False
+
+    async def unban_user(self, user_id: str, unbanned_by: str = "system") -> bool:
+        """Unban a user. Returns True if the user was actually banned."""
+        try:
+            result = await self.banned.delete_one({"user_id": str(user_id)})
+            if result.deleted_count > 0:
+                await self.add_history("unban", user_id, unbanned_by)
+                return True
+            return False
+        except Exception as e:
+            logger.error("unban_user error: %s", e)
+            return False
+
+    async def is_banned(self, user_id: str) -> bool:
+        """Return True if the user is currently banned."""
+        try:
+            result = await self.banned.find_one({"user_id": str(user_id)})
+            return result is not None
+        except Exception as e:
+            logger.error("is_banned error: %s", e)
+            return False
+
+    async def get_ban_info(self, user_id: str) -> Optional[Dict]:
+        """Return ban document for a user, or None if not banned."""
+        try:
+            return await self.banned.find_one({"user_id": str(user_id)})
+        except Exception as e:
+            logger.error("get_ban_info error: %s", e)
+            return None
+
+    async def get_banned_users(self, limit: int = None) -> List[Dict]:
+        """Return banned users sorted by banned_at descending."""
+        try:
+            cursor = self.banned.find({}).sort("banned_at", -1)
+            if limit:
+                cursor = cursor.limit(limit)
+                return await cursor.to_list(length=limit)
+            return await cursor.to_list(length=None)
+        except Exception as e:
+            logger.error("get_banned_users error: %s", e)
+            return []
 
     async def close(self):
         self.client.close()

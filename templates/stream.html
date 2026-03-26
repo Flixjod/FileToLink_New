@@ -588,7 +588,8 @@
       background: linear-gradient(transparent, rgba(0,0,0,.88));
       opacity: 0;
       transition: opacity .25s ease;
-      z-index: 15;
+      /* Above settings-layer (9995) so control buttons are always tappable */
+      z-index: 9996;
       border-radius: 0 0 24px 24px;
       pointer-events: auto;
     }
@@ -787,272 +788,142 @@
     }
     .pip-return-btn:active { transform: scale(.97); }
 
-    /* ── UI Layer: when settings open, intercept all non-settings clicks ── */
+    /* ── Settings popup — clean minimal menu ─────────────────────── */
+    /* settings-layer: transparent click-capture layer sitting behind the popup,
+       inside the video-wrapper so it only intercepts video area taps.
+       z-index intentionally lower than the popup (9999) so the popup itself
+       is always tappable.  The overlay (outside the wrapper) handles the rest
+       of the viewport on mobile. */
     .settings-layer {
       display: none;
-      position: fixed;
+      position: absolute;
       inset: 0;
-      z-index: 9990;
+      z-index: 9995;
       background: transparent;
       cursor: default;
       touch-action: none;
     }
     .settings-layer.active { display: block; }
 
-    /* ── Settings popup — YouTube-style premium redesign ─────────
-       Desktop: absolute bottom-right above ctrl-bar.
-       Mobile: fixed bottom sheet with slide-up animation.
-       Always uses fixed positioning to escape player stacking context.
-    ────────────────────────────────────────────────────────── */
     .settings-popup {
       position: fixed;
       bottom: 70px;
       right: 16px;
       background: var(--popup-bg);
       border: 1px solid var(--popup-border);
-      border-radius: 18px;
+      border-radius: 14px;
       box-shadow: var(--popup-shadow);
-      padding: 0;
-      min-width: 290px;
-      max-width: min(340px, calc(100vw - 24px));
-      z-index: 9999;
+      min-width: 260px;
+      max-width: min(300px, calc(100vw - 24px));
+      z-index: 10000;
       opacity: 0;
-      transform: translateY(12px) scale(.96);
+      transform: translateY(8px) scale(.98);
       pointer-events: none;
-      transition: opacity .22s ease, transform .25s cubic-bezier(.34,1.56,.64,1);
-      backdrop-filter: blur(24px);
-      -webkit-backdrop-filter: blur(24px);
-      isolation: isolate;
+      transition: opacity .16s ease, transform .18s ease;
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
       overflow: hidden;
     }
-
-    /* Mobile: bottom sheet */
     @media (max-width: 600px) {
       .settings-popup {
         position: fixed;
-        bottom: 0; left: 0; right: 0; top: auto;
-        border-radius: 22px 22px 0 0;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        top: auto;
+        border-radius: 16px 16px 0 0;
         min-width: unset;
         max-width: 100vw;
-        padding: 0;
+        max-height: 70vh;
         transform: translateY(100%);
-        max-height: 82vh;
-        overflow: hidden;
-        z-index: 9999;
-        transition: opacity .25s ease, transform .3s cubic-bezier(.22,.61,.36,1);
-        display: flex;
-        flex-direction: column;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+        /* iOS safe-area padding */
+        padding-bottom: env(safe-area-inset-bottom, 0);
+        padding-bottom: max(env(safe-area-inset-bottom, 0px), 0px);
       }
     }
-    @media (max-width: 600px) and (orientation: portrait) {
-      .settings-popup {
-        max-height: 80vh;
-      }
-    }
-
     .settings-popup.open {
       opacity: 1;
       transform: translateY(0) scale(1);
       pointer-events: all;
     }
 
-    /* ── Settings panels container — clip for slide transitions ── */
-    .settings-panels {
-      position: relative;
-      overflow: hidden;
-      /* On mobile the panels container must be able to scroll independently */
-      flex: 1;
-      min-height: 0;
-    }
-
-    /* Individual setting panel (main + submenus) */
-    .settings-panel {
-      width: 100%;
-      transition: transform .25s cubic-bezier(.4,0,.2,1), opacity .2s ease;
-      /* Each panel independently scrollable so main or sub content
-         never clips on short-height screens */
-      display: flex;
-      flex-direction: column;
-    }
-    .settings-panel.panel-hidden-right {
-      position: absolute;
-      top: 0; left: 0; right: 0;
-      transform: translateX(100%);
-      opacity: 0;
-      pointer-events: none;
-    }
-    .settings-panel.panel-hidden-left {
-      position: absolute;
-      top: 0; left: 0; right: 0;
-      transform: translateX(-100%);
-      opacity: 0;
-      pointer-events: none;
-    }
-    .settings-panel.panel-active {
-      position: relative;
-      transform: translateX(0);
-      opacity: 1;
-      pointer-events: all;
-    }
-
-    /* Settings popup header */
+    /* Settings header */
     .settings-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 14px 16px 12px;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 14px 10px;
       border-bottom: 1px solid rgba(255,255,255,.07);
     }
     [data-theme="light"] .settings-header { border-color: rgba(0,0,0,.07); }
     .settings-header-title {
-      display: flex; align-items: center; gap: 8px;
-      font-size: .78rem;
-      font-weight: 700;
+      font-size: .76rem; font-weight: 700;
       color: var(--text-secondary);
-      letter-spacing: .05em;
-      text-transform: uppercase;
+      letter-spacing: .05em; text-transform: uppercase;
+      display: flex; align-items: center; gap: 7px;
     }
-    .settings-header-title i { color: #667eea; font-size: .72rem; }
-
+    .settings-header-title i { color: #667eea; }
     .settings-close-btn {
-      width: 28px; height: 28px;
-      border-radius: 8px;
-      background: rgba(255,255,255,.08);
-      border: none;
-      color: rgba(255,255,255,.5);
-      font-size: .65rem;
-      cursor: pointer;
-      display: flex; align-items: center; justify-content: center;
-      transition: all .15s ease;
-      flex-shrink: 0;
+      width: 26px; height: 26px; border-radius: 7px;
+      background: rgba(255,255,255,.08); border: none;
+      color: rgba(255,255,255,.5); font-size: .62rem;
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+      transition: all .15s ease; flex-shrink: 0;
     }
     [data-theme="light"] .settings-close-btn { background: rgba(0,0,0,.06); color: rgba(0,0,0,.4); }
-    .settings-close-btn:hover { background: rgba(239,68,68,.2); color: #f87171; transform: scale(1.1); }
+    .settings-close-btn:hover { background: rgba(239,68,68,.2); color: #f87171; }
 
-    /* Submenu back header */
-    .settings-sub-header {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 14px 16px 12px;
-      border-bottom: 1px solid rgba(255,255,255,.07);
-      cursor: pointer;
-      transition: background .15s ease;
-    }
-    .settings-sub-header:hover { background: rgba(255,255,255,.04); }
-    [data-theme="light"] .settings-sub-header { border-color: rgba(0,0,0,.07); }
-    [data-theme="light"] .settings-sub-header:hover { background: rgba(0,0,0,.03); }
-    .settings-back-btn {
-      width: 28px; height: 28px;
-      border-radius: 8px;
-      background: rgba(102,126,234,.12);
-      border: none;
-      color: #667eea;
-      font-size: .65rem;
-      cursor: pointer;
-      display: flex; align-items: center; justify-content: center;
-      transition: all .15s ease;
-      flex-shrink: 0;
-    }
-    .settings-back-btn:hover { background: rgba(102,126,234,.24); transform: scale(1.1); }
-    .settings-sub-title {
-      font-size: .82rem;
-      font-weight: 700;
-      color: var(--text-primary);
-      flex: 1;
+    /* Settings section label */
+    .settings-section-label {
+      font-size: .68rem; font-weight: 700; letter-spacing: .06em;
+      text-transform: uppercase; color: var(--text-muted);
+      padding: 10px 14px 4px;
     }
 
-    /* Mobile drag indicator */
-    .settings-drag-handle {
-      display: none;
-      width: 36px; height: 4px;
-      border-radius: 2px;
-      background: rgba(255,255,255,.18);
-      margin: 10px auto 4px;
+    /* Settings rows */
+    .settings-row {
+      display: flex; align-items: center; gap: 10px;
+      padding: 9px 14px; cursor: pointer;
+      transition: background .12s ease;
+      font-size: .83rem; color: var(--text-primary);
+      border-radius: 8px; margin: 1px 6px;
     }
-    [data-theme="light"] .settings-drag-handle { background: rgba(0,0,0,.12); }
-    @media (max-width: 600px) { .settings-drag-handle { display: block; } }
+    .settings-row:hover { background: var(--popup-item-hover); }
+    .settings-row:active { background: var(--popup-item-active); }
+    .settings-row i.sr-icon { width: 16px; text-align: center; color: #667eea; font-size: .78rem; flex-shrink: 0; }
+    .settings-row .sr-label { flex: 1; }
+    .settings-row .sr-val { font-size: .74rem; color: var(--text-muted); }
+    .settings-row.sr-active { color: #667eea; font-weight: 600; }
+    .settings-row.sr-active .sr-val { color: #667eea; }
+    .settings-divider { height: 1px; background: rgba(255,255,255,.06); margin: 4px 14px; }
+    [data-theme="light"] .settings-divider { background: rgba(0,0,0,.06); }
 
-    /* Main menu rows */
-    .settings-menu-list {
-      padding: 8px 8px 10px;
-      overflow-y: auto;
-      overflow-x: hidden;
-      -webkit-overflow-scrolling: touch;
-      max-height: calc(78vh - 60px);
+    /* Speed chips inside settings */
+    .settings-speed-chips {
+      display: flex; flex-wrap: wrap; gap: 5px;
+      padding: 4px 14px 10px;
     }
-    @media (max-width: 600px) { .settings-menu-list { max-height: calc(70vh - 60px); } }
-    @media (max-width: 600px) and (orientation: portrait) { .settings-menu-list { max-height: calc(64vh - 60px); } }
-    .settings-menu-row {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding: 13px 14px;
-      border-radius: 12px;
-      cursor: pointer;
-      transition: background .15s ease;
-      user-select: none;
-      position: relative;
-      min-height: 56px;
+    .sp-chip {
+      padding: 4px 10px; border-radius: 20px;
+      background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.12);
+      color: var(--text-secondary); font-size: .74rem; font-weight: 600;
+      cursor: pointer; transition: all .12s ease;
     }
-    .settings-menu-row:hover { background: var(--popup-item-hover); }
-    .settings-menu-row:active { background: var(--popup-item-active); transform: scale(.99); }
-    .settings-menu-icon {
-      width: 34px; height: 34px;
-      border-radius: 10px;
-      background: rgba(102,126,234,.15);
-      display: flex; align-items: center; justify-content: center;
-      flex-shrink: 0;
-      transition: background .15s ease;
-    }
-    .settings-menu-row:hover .settings-menu-icon { background: rgba(102,126,234,.25); }
-    .settings-menu-icon i { font-size: .82rem; color: #667eea; }
-    .settings-menu-label {
-      flex: 1;
-      font-size: .86rem;
-      font-weight: 600;
-      color: var(--text-primary);
-      min-width: 0;
-    }
-    .settings-menu-value {
-      font-size: .76rem;
-      color: var(--text-muted);
-      font-weight: 500;
-      flex-shrink: 0;
-      max-width: 90px;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      text-align: right;
-    }
-    .settings-menu-arrow {
-      font-size: .6rem;
-      color: rgba(255,255,255,.25);
-      flex-shrink: 0;
-      margin-left: 2px;
-    }
-    [data-theme="light"] .settings-menu-arrow { color: rgba(0,0,0,.22); }
-    .settings-menu-divider {
-      height: 1px;
-      background: rgba(255,255,255,.06);
-      margin: 2px 14px;
-    }
-    [data-theme="light"] .settings-menu-divider { background: rgba(0,0,0,.06); }
+    .sp-chip:hover { background: rgba(102,126,234,.18); border-color: rgba(102,126,234,.4); color: #667eea; }
+    .sp-chip.active { background: rgba(102,126,234,.25); border-color: #667eea; color: #667eea; }
+    [data-theme="light"] .sp-chip { background: rgba(102,126,234,.07); border-color: rgba(102,126,234,.2); color: #4a5568; }
+    [data-theme="light"] .sp-chip.active { background: rgba(102,126,234,.18); color: #1d4ed8; border-color: #667eea; }
 
-    /* Submenu item list — scrollable so long lists don't clip */
+    /* Audio track items */
     .settings-sub-list {
-      padding: 8px 8px 12px;
+      padding: 4px 6px 8px;
+      max-height: 200px;
       overflow-y: auto;
-      overflow-x: hidden;
-      /* Allow sub-list to scroll when there are many items (audio tracks,
-         subtitles).  Max-height matches the popup's max-height minus the
-         header (≈56 px) and a little breathing room. */
-      max-height: calc(78vh - 60px);
       -webkit-overflow-scrolling: touch;
     }
     @media (max-width: 600px) {
       .settings-sub-list {
-        max-height: calc(72vh - 60px);
+        max-height: 160px;
       }
     }
     @media (max-width: 600px) and (orientation: portrait) {
@@ -1161,108 +1032,27 @@
       border-color: #667eea;
       font-weight: 700;
     }
-    [data-theme="light"] .speed-chip-btn { background: rgba(102,126,234,.07); border-color: rgba(102,126,234,.18); color: #4a5568; }
-    [data-theme="light"] .speed-chip-btn:hover { background: rgba(102,126,234,.15); color: #667eea; }
-    [data-theme="light"] .speed-chip-btn.active { background: rgba(102,126,234,.2); color: #4c51bf; }
-      padding: 4px 14px 10px;
-      border-top: 1px solid rgba(255,255,255,.06);
-      margin-top: 4px;
-      /* Span all columns in the grid so the slider takes the full width */
-      grid-column: 1 / -1;
-    }
-    [data-theme="light"] .speed-custom-section { border-color: rgba(0,0,0,.06); }
-    .speed-custom-title {
-      display: flex; align-items: center; justify-content: space-between;
-      font-size: .74rem;
-      color: var(--text-secondary);
-      margin-bottom: 8px;
-      margin-top: 8px;
-    }
-    .custom-speed-val {
-      font-family: 'JetBrains Mono', monospace;
-      font-weight: 700;
-      color: #667eea;
-    }
-    .custom-speed-slider {
-      -webkit-appearance: none;
-      appearance: none;
-      width: 100%;
-      height: 4px;
-      border-radius: 999px;
-      background: rgba(102,126,234,.25);
-      outline: none;
-      cursor: pointer;
-    }
-    .custom-speed-slider::-webkit-slider-thumb {
-      -webkit-appearance: none;
-      width: 16px; height: 16px;
-      border-radius: 50%;
-      background: linear-gradient(135deg, #667eea, #a78bfa);
-      cursor: pointer;
-      box-shadow: 0 2px 8px rgba(102,126,234,.6);
-    }
-    .custom-speed-slider::-moz-range-thumb {
-      width: 16px; height: 16px;
-      border-radius: 50%;
-      background: linear-gradient(135deg, #667eea, #a78bfa);
-      cursor: pointer;
-      border: none;
-      box-shadow: 0 2px 8px rgba(102,126,234,.6);
-    }
-    .speed-range-hints {
-      display: flex; justify-content: space-between;
-      font-size: .6rem;
-      color: rgba(255,255,255,.28);
-      margin-top: 5px;
-    }
-    [data-theme="light"] .speed-range-hints { color: rgba(0,0,0,.28); }
-    /* Legacy compat — may still be referenced */
-    .speed-options { display: none; }
-    .speed-options.open { display: block; }
-    .speed-chips { display: flex; flex-wrap: wrap; gap: 5px; padding: 3px 0 4px; }
-    .speed-chip {
-      background: rgba(255,255,255,.06);
-      border: 1px solid rgba(255,255,255,.1);
-      border-radius: 7px;
-      padding: 5px 12px;
-      font-size: .72rem;
-      cursor: pointer;
-      color: var(--text-secondary);
-      transition: all .15s ease;
-      font-family: 'Poppins', sans-serif;
-      font-weight: 600;
-    }
-    .speed-chip:hover { background: rgba(102,126,234,.2); color: #667eea; border-color: rgba(102,126,234,.4); }
-    .speed-chip.active { background: rgba(102,126,234,.25); color: #667eea; border-color: #667eea; font-weight: 700; }
-
-    /* Audio track / subtitle lists (legacy) */
-    .track-list { padding: 2px 4px 3px; }
-    .track-item {
-      display: flex; align-items: center; gap: 8px;
-      padding: 7px 12px;
-      border-radius: 9px;
-      cursor: pointer;
-      font-size: .78rem;
-      color: var(--text-secondary);
-      transition: background .15s;
-    }
-    .track-item:hover { background: var(--popup-item-hover); color: var(--text-primary); }
-    .track-item.active { color: #667eea; font-weight: 600; }
-    .track-item i { font-size: .66rem; width: 13px; color: #667eea; flex-shrink: 0; }
-    .no-tracks { padding: 5px 12px 3px; font-size: .73rem; color: var(--text-muted); font-style: italic; }
-
-    /* ── Settings Overlay (mobile backdrop) ────────── */
+    /* ── Settings Overlay (backdrop) ────────── */
+    /* Sits behind the popup but above everything else.
+       On desktop transparent — stray clicks close menu via document listener.
+       On mobile shows a dark scrim behind the bottom-sheet. */
     .settings-overlay {
       display: none;
       position: fixed;
       inset: 0;
-      background: rgba(0,0,0,.6);
-      z-index: 9991;
+      background: transparent;
+      z-index: 9997;
       pointer-events: none;
     }
     .settings-overlay.active {
       display: block;
       pointer-events: auto;
+    }
+    @media (max-width: 600px) {
+      .settings-overlay.active {
+        background: rgba(0,0,0,.55);
+        transition: background .18s ease;
+      }
     }
 
     /* non-video file card */
@@ -1607,126 +1397,44 @@
             </div>
           </div>
 
-          <!-- UI layer: blocks all non-settings interactions when menu is open (position:fixed in CSS) -->
+          <!-- UI layer: intercepts all non-settings clicks when menu is open -->
           <div class="settings-layer" id="settings-layer" onclick="closeSettings()"></div>
 
-          <!-- ── Settings popup (position:fixed → escapes stacking context, works on mobile) ── -->
+          <!-- ── Settings popup — clean minimal menu ── -->
           <div class="settings-popup" id="settings-popup" role="dialog" aria-label="Player Settings">
-            <div class="settings-drag-handle"></div>
 
-            <!-- Panels container (clipped for slide transitions) -->
-            <div class="settings-panels" id="settings-panels">
+            <!-- Header -->
+            <div class="settings-header">
+              <span class="settings-header-title">
+                <i class="fa-solid fa-sliders"></i> Settings
+              </span>
+              <button class="settings-close-btn" onclick="closeSettings()" aria-label="Close settings">
+                <i class="fa-solid fa-xmark"></i>
+              </button>
+            </div>
 
-              <!-- ── MAIN PANEL ──────────────────────────────────────── -->
-              <div class="settings-panel panel-active" id="panel-main">
-                <div class="settings-header">
-                  <span class="settings-header-title">
-                    <i class="fa-solid fa-sliders"></i> Settings
-                  </span>
-                  <button class="settings-close-btn" onclick="closeSettings()" aria-label="Close settings">
-                    <i class="fa-solid fa-xmark"></i>
-                  </button>
-                </div>
-                <div class="settings-menu-list">
+            <!-- ── Playback Speed ── -->
+            <div class="settings-section-label">Playback Speed</div>
+            <div class="settings-speed-chips" id="speed-chips-row">
+              <button class="sp-chip" data-speed="0.5"  onclick="selectSpeedChip(this)">0.5×</button>
+              <button class="sp-chip" data-speed="0.75" onclick="selectSpeedChip(this)">0.75×</button>
+              <button class="sp-chip active" data-speed="1"  onclick="selectSpeedChip(this)">1×</button>
+              <button class="sp-chip" data-speed="1.25" onclick="selectSpeedChip(this)">1.25×</button>
+              <button class="sp-chip" data-speed="1.5"  onclick="selectSpeedChip(this)">1.5×</button>
+              <button class="sp-chip" data-speed="2"    onclick="selectSpeedChip(this)">2×</button>
+            </div>
 
-                  <!-- Speed -->
-                  <div class="settings-menu-row" id="row-speed" onclick="openSubPanel('speed')" role="button" tabindex="0">
-                    <div class="settings-menu-icon"><i class="fa-solid fa-gauge-high"></i></div>
-                    <span class="settings-menu-label">Speed</span>
-                    <span class="settings-menu-value" id="speed-main-val">Normal</span>
-                    <i class="fa-solid fa-chevron-right settings-menu-arrow"></i>
-                  </div>
+            <div class="settings-divider"></div>
 
-                  <div class="settings-menu-divider"></div>
+            <!-- ── Audio Track ── -->
+            <div class="settings-section-label">Audio Track</div>
+            <div class="settings-sub-list" id="audio-sub-list">
+              <div class="settings-row sr-active" data-track-index="0">
+                <i class="fa-solid fa-check sr-icon"></i>
+                <span class="sr-label">Default</span>
+              </div>
+            </div>
 
-                  <!-- Audio Track -->
-                  <div class="settings-menu-row" id="row-audio" onclick="openSubPanel('audio')" role="button" tabindex="0">
-                    <div class="settings-menu-icon"><i class="fa-solid fa-volume-high"></i></div>
-                    <span class="settings-menu-label">Audio Track</span>
-                    <span class="settings-menu-value" id="audio-main-val">Default</span>
-                    <i class="fa-solid fa-chevron-right settings-menu-arrow"></i>
-                  </div>
-
-                  <div class="settings-menu-divider"></div>
-
-                  <!-- Subtitles -->
-                  <div class="settings-menu-row" id="row-subs" onclick="openSubPanel('subs')" role="button" tabindex="0">
-                    <div class="settings-menu-icon"><i class="fa-solid fa-closed-captioning"></i></div>
-                    <span class="settings-menu-label">Subtitles</span>
-                    <span class="settings-menu-value" id="subs-main-val">Off</span>
-                    <i class="fa-solid fa-chevron-right settings-menu-arrow"></i>
-                  </div>
-
-                </div>
-              </div><!-- /panel-main -->
-
-              <!-- ── SPEED SUBMENU ─────────────────────────────────── -->
-              <div class="settings-panel panel-hidden-right" id="panel-speed">
-                <div class="settings-sub-header" onclick="closeSubPanel()" role="button" tabindex="0">
-                  <button class="settings-back-btn" aria-label="Back"><i class="fa-solid fa-chevron-left"></i></button>
-                  <span class="settings-sub-title">Playback Speed</span>
-                  <button class="settings-close-btn" onclick="closeSettings()" aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
-                </div>
-                <div class="settings-sub-list" id="speed-sub-list" style="padding:10px 10px 4px;">
-                  <!-- Horizontal speed grid row -->
-                  <div class="speed-chips-row" id="speed-chips-row">
-                    <button class="speed-chip-btn" data-speed="0.25" onclick="selectSpeedChip(this)">0.25×</button>
-                    <button class="speed-chip-btn" data-speed="0.5" onclick="selectSpeedChip(this)">0.5×</button>
-                    <button class="speed-chip-btn" data-speed="0.75" onclick="selectSpeedChip(this)">0.75×</button>
-                    <button class="speed-chip-btn active" data-speed="1" onclick="selectSpeedChip(this)">1×</button>
-                    <button class="speed-chip-btn" data-speed="1.25" onclick="selectSpeedChip(this)">1.25×</button>
-                    <button class="speed-chip-btn" data-speed="1.5" onclick="selectSpeedChip(this)">1.5×</button>
-                    <button class="speed-chip-btn" data-speed="1.75" onclick="selectSpeedChip(this)">1.75×</button>
-                    <button class="speed-chip-btn" data-speed="2" onclick="selectSpeedChip(this)">2×</button>
-                  </div>
-                  <!-- Custom speed slider in second line -->
-                  <div class="speed-custom-section">
-                    <div class="speed-custom-title">
-                      <span>Custom Speed</span>
-                      <span class="custom-speed-val" id="custom-speed-val">1.0×</span>
-                    </div>
-                    <input type="range" class="custom-speed-slider" id="custom-speed-slider"
-                           min="0.1" max="4" step="0.05" value="1"
-                           aria-label="Custom playback speed"
-                           oninput="onCustomSpeedSlider(this.value)">
-                    <div class="speed-range-hints">
-                      <span>0.1×</span><span>1.0×</span><span>2.0×</span><span>3.0×</span><span>4.0×</span>
-                    </div>
-                  </div>
-                </div>
-              </div><!-- /panel-speed -->
-
-              <!-- ── AUDIO TRACK SUBMENU ───────────────────────────── -->
-              <div class="settings-panel panel-hidden-right" id="panel-audio">
-                <div class="settings-sub-header" onclick="closeSubPanel()" role="button" tabindex="0">
-                  <button class="settings-back-btn" aria-label="Back"><i class="fa-solid fa-chevron-left"></i></button>
-                  <span class="settings-sub-title">Audio Track</span>
-                  <button class="settings-close-btn" onclick="closeSettings()" aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
-                </div>
-                <div class="settings-sub-list" id="audio-sub-list">
-                  <div class="settings-sub-item sub-active" data-track-index="0">
-                    <div class="sub-item-check"><i class="fa-solid fa-check"></i></div>
-                    <span class="sub-item-label">Default</span>
-                  </div>
-                </div>
-              </div><!-- /panel-audio -->
-
-              <!-- ── SUBTITLES SUBMENU ─────────────────────────────── -->
-              <div class="settings-panel panel-hidden-right" id="panel-subs">
-                <div class="settings-sub-header" onclick="closeSubPanel()" role="button" tabindex="0">
-                  <button class="settings-back-btn" aria-label="Back"><i class="fa-solid fa-chevron-left"></i></button>
-                  <span class="settings-sub-title">Subtitles / Captions</span>
-                  <button class="settings-close-btn" onclick="closeSettings()" aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
-                </div>
-                <div class="settings-sub-list" id="subs-sub-list">
-                  <div class="settings-sub-item sub-active" id="subs-off-item" onclick="selectSubtitle(null)">
-                    <div class="sub-item-check"><i class="fa-solid fa-check"></i></div>
-                    <span class="sub-item-label">Off</span>
-                  </div>
-                </div>
-              </div><!-- /panel-subs -->
-
-            </div><!-- /settings-panels -->
           </div><!-- /settings-popup -->
 
           <!-- ── Controls bar ──────────────────────────────────── -->
@@ -2362,14 +2070,11 @@
     video.addEventListener('webkitendfullscreen',   onFullscreenChange);
   }
 
-  // ── Settings Popup ─────────────────────────────────────────────────────────
-  // ctrl-bar z-index (2001) > overlay (1999) so the settings button is always
-  // clickable on mobile. The popup uses z-index 2002 on mobile (see CSS).
-  let settingsOpen   = false;
-  let activeSubPanel = null;   // 'speed' | 'audio' | 'subs' | null
+  // ── Settings Popup — clean minimal implementation ──────────────────────────
+  let settingsOpen = false;
 
   function toggleSettings(e) {
-    if (e) e.stopPropagation();
+    if (e) { e.stopPropagation(); e.preventDefault(); }
     settingsOpen ? closeSettings() : openSettings();
   }
 
@@ -2377,97 +2082,55 @@
     const popup   = document.getElementById('settings-popup');
     const overlay = document.getElementById('settings-overlay');
     const layer   = document.getElementById('settings-layer');
-    if (popup)   popup.classList.add('open');
+    const btn     = document.getElementById('settings-btn');
+
+    if (!popup) return;
+
+    // Reset any inline positioning before re-calculating
+    popup.style.bottom = '';
+    popup.style.right  = '';
+    popup.style.top    = '';
+    popup.style.left   = '';
+
+    // Desktop: position popup above the settings button
+    const isMobile = window.innerWidth <= 600;
+    if (!isMobile && btn) {
+      const r        = btn.getBoundingClientRect();
+      const popupW   = Math.min(300, window.innerWidth - 24);
+      const rightOff = window.innerWidth - r.right;
+      // Clamp so popup never overflows left edge
+      const safeRight = Math.min(rightOff, window.innerWidth - popupW - 8);
+      popup.style.bottom = (window.innerHeight - r.top + 6) + 'px';
+      popup.style.right  = Math.max(4, safeRight) + 'px';
+      popup.style.top    = 'auto';
+      popup.style.left   = 'auto';
+    }
+
     if (overlay) overlay.classList.add('active');
     if (layer)   layer.classList.add('active');
-    settingsOpen = true;
-    _showPanel('main');
-    activeSubPanel = null;
-    const btn = document.getElementById('settings-btn');
-    if (btn) btn.classList.add('active');
+    if (btn)     btn.classList.add('active');
 
-    // On desktop: position popup above settings button
-    if (popup && window.innerWidth > 600 && btn) {
-      const btnRect = btn.getBoundingClientRect();
-      popup.style.bottom  = (window.innerHeight - btnRect.top + 8) + 'px';
-      popup.style.right   = (window.innerWidth - btnRect.right + 0) + 'px';
-      popup.style.top     = 'auto';
-      popup.style.left    = 'auto';
-    }
+    // Force reflow then add .open so CSS transition fires
+    popup.offsetHeight; // reflow
+    popup.classList.add('open');
+
+    settingsOpen = true;
+    populateTracks();
   }
 
   function closeSettings() {
     const popup   = document.getElementById('settings-popup');
     const overlay = document.getElementById('settings-overlay');
     const layer   = document.getElementById('settings-layer');
+    const btn     = document.getElementById('settings-btn');
     if (popup)   popup.classList.remove('open');
     if (overlay) overlay.classList.remove('active');
     if (layer)   layer.classList.remove('active');
+    if (btn)     btn.classList.remove('active');
     settingsOpen = false;
-    activeSubPanel = null;
-    const btn = document.getElementById('settings-btn');
-    if (btn) btn.classList.remove('active');
-    // Reset to main panel state after close
-    setTimeout(() => { if (!settingsOpen) _showPanel('main'); }, 260);
   }
 
-  /* Open a named sub-panel (slides in from right) */
-  function openSubPanel(name) {
-    activeSubPanel = name;
-    _slideToPanel(name);
-  }
-
-  /* Go back to main panel (slides in from left) */
-  function closeSubPanel() {
-    activeSubPanel = null;
-    _slideToMainFromSub();
-  }
-
-  /* Internal: show a panel immediately without animation */
-  function _showPanel(name) {
-    const allPanels = document.querySelectorAll('.settings-panel');
-    allPanels.forEach(p => {
-      p.classList.remove('panel-active', 'panel-hidden-right', 'panel-hidden-left');
-      if (p.id === 'panel-' + name) {
-        p.classList.add('panel-active');
-      } else {
-        p.classList.add('panel-hidden-right');
-      }
-    });
-  }
-
-  /* Slide to a sub-panel (from main → sub, right-to-left) */
-  function _slideToPanel(name) {
-    const mainPanel = document.getElementById('panel-main');
-    const subPanel  = document.getElementById('panel-' + name);
-    if (!mainPanel || !subPanel) return;
-
-    // Slide main out to the left
-    mainPanel.classList.remove('panel-active');
-    mainPanel.classList.add('panel-hidden-left');
-
-    // Bring sub in from the right
-    subPanel.classList.remove('panel-hidden-right', 'panel-hidden-left');
-    subPanel.classList.add('panel-active');
-  }
-
-  /* Slide back to main panel (from sub → main, left-to-right) */
-  function _slideToMainFromSub() {
-    const mainPanel = document.getElementById('panel-main');
-    const allPanels = document.querySelectorAll('.settings-panel');
-    if (!mainPanel) return;
-
-    allPanels.forEach(p => {
-      if (p.id !== 'panel-main') {
-        p.classList.remove('panel-active', 'panel-hidden-left');
-        p.classList.add('panel-hidden-right');
-      }
-    });
-    mainPanel.classList.remove('panel-hidden-left', 'panel-hidden-right');
-    mainPanel.classList.add('panel-active');
-  }
-
-  /* Close settings on outside click (desktop only) */
+  // Close when clicking outside the popup or the settings button
   document.addEventListener('click', (e) => {
     if (!settingsOpen) return;
     const popup = document.getElementById('settings-popup');
@@ -2477,152 +2140,67 @@
     }
   });
 
-  // ── Speed control (chip grid system) ──────────────────────────────────────
+  // Close on resize (avoids mispositioned popup)
+  window.addEventListener('resize', () => { if (settingsOpen) closeSettings(); });
+
+  // ── Speed control ────────────────────────────────────────────────────────
   function selectSpeedChip(btnEl) {
     const speed = parseFloat(btnEl.dataset.speed);
     const label = speed === 1 ? 'Normal' : (speed + '×');
-
     if (video) video.playbackRate = speed;
-
-    document.querySelectorAll('#speed-chips-row .speed-chip-btn').forEach(el => {
-      el.classList.remove('active');
+    document.querySelectorAll('#speed-chips-row .sp-chip').forEach(el => {
+      el.classList.toggle('active', el === btnEl);
     });
-    btnEl.classList.add('active');
-
-    const mainVal = document.getElementById('speed-main-val');
-    if (mainVal) mainVal.textContent = label;
-
-    const slider = document.getElementById('custom-speed-slider');
-    const valEl  = document.getElementById('custom-speed-val');
-    if (slider) slider.value = speed;
-    if (valEl)  valEl.textContent = speed.toFixed(speed % 1 === 0 ? 0 : 2) + '×';
-
     showToast('Speed: ' + label, 'fa-gauge-high');
   }
 
-  // Legacy selectSpeed still works for backward compat
-  function selectSpeed(itemEl) {
-    const speed = parseFloat(itemEl.dataset.speed);
-    const label = itemEl.dataset.label || (speed + '×');
-    if (video) video.playbackRate = speed;
-    const mainVal = document.getElementById('speed-main-val');
-    if (mainVal) mainVal.textContent = label;
-    const slider = document.getElementById('custom-speed-slider');
-    const valEl  = document.getElementById('custom-speed-val');
-    if (slider) slider.value = speed;
-    if (valEl)  valEl.textContent = speed.toFixed(speed % 1 === 0 ? 0 : 2) + '×';
-    document.querySelectorAll('#speed-chips-row .speed-chip-btn').forEach(el => {
-      el.classList.toggle('active', parseFloat(el.dataset.speed) === speed);
-    });
-  }
-
-  function onCustomSpeedSlider(val) {
-    const speed = parseFloat(val);
-    if (video) video.playbackRate = speed;
-    const valEl  = document.getElementById('custom-speed-val');
-    const mainVal = document.getElementById('speed-main-val');
-    const display = speed.toFixed(2) + '×';
-    if (valEl)   valEl.textContent  = display;
-    if (mainVal) mainVal.textContent = display;
-
-    // Highlight chip if it matches a preset exactly
-    document.querySelectorAll('#speed-chips-row .speed-chip-btn').forEach(el => {
-      el.classList.toggle('active', Math.abs(parseFloat(el.dataset.speed) - speed) < 0.001);
-    });
-  }
-
-  // ── Audio tracks & Subtitles (new submenu system) ────────────────────────
-  function populateTracks() {
-    if (!video) return;
-
-    // Audio tracks
-    const atList = document.getElementById('audio-sub-list');
-    if (atList && video.audioTracks && video.audioTracks.length > 1) {
-      atList.innerHTML = '';
-      const useGrid = video.audioTracks.length > 4;
-      if (useGrid) atList.classList.add('grid-layout');
-      else         atList.classList.remove('grid-layout');
-      Array.from(video.audioTracks).forEach((track, i) => {
-        const div = document.createElement('div');
-        div.className = 'settings-sub-item' + (track.enabled ? ' sub-active' : '');
-        div.dataset.trackIndex = i;
-        div.innerHTML = `<div class="sub-item-check"><i class="fa-solid fa-check${track.enabled ? '' : ' hidden'}"></i></div>
-                         <span class="sub-item-label">${track.label || 'Track ' + (i + 1)}</span>`;
-        div.onclick = () => {
-          Array.from(video.audioTracks).forEach(t => t.enabled = false);
-          track.enabled = true;
-          const mainVal = document.getElementById('audio-main-val');
-          if (mainVal) mainVal.textContent = track.label || 'Track ' + (i + 1);
-          populateTracks();
-          showToast('Audio: ' + (track.label || 'Track ' + (i + 1)));
-        };
-        atList.appendChild(div);
-      });
-    }
-
-    // Subtitles
-    const stList = document.getElementById('subs-sub-list');
-    if (stList && video.textTracks && video.textTracks.length > 0) {
-      stList.innerHTML = '';
-      const trackCount = video.textTracks.length;
-      const useGrid = trackCount > 4;
-      if (useGrid) stList.classList.add('grid-layout');
-      else         stList.classList.remove('grid-layout');
-      // Off item
-      const offDiv = document.createElement('div');
-      const noActive = Array.from(video.textTracks).every(t => t.mode !== 'showing');
-      offDiv.className = 'settings-sub-item' + (noActive ? ' sub-active' : '');
-      offDiv.id = 'subs-off-item';
-      offDiv.innerHTML = `<div class="sub-item-check"><i class="fa-solid fa-check${noActive ? '' : ' hidden'}"></i></div>
-                          <span class="sub-item-label">Off</span>`;
-      offDiv.onclick = () => selectSubtitle(null);
-      stList.appendChild(offDiv);
-
-      Array.from(video.textTracks).forEach((track, i) => {
-        const div = document.createElement('div');
-        const isShowing = track.mode === 'showing';
-        div.className = 'settings-sub-item' + (isShowing ? ' sub-active' : '');
-        div.innerHTML = `<div class="sub-item-check"><i class="fa-solid fa-check${isShowing ? '' : ' hidden'}"></i></div>
-                         <span class="sub-item-label">${track.label || track.language || 'Subtitle ' + (i + 1)}</span>`;
-        div.onclick = () => selectSubtitle(track);
-        stList.appendChild(div);
-      });
-    }
-  }
-
-  function selectSubtitle(track) {
-    if (!video) return;
-    Array.from(video.textTracks).forEach(t => { t.mode = 'disabled'; });
-    if (track) {
-      track.mode = 'showing';
-      const label = track.label || track.language || 'Subtitle';
-      const mainVal = document.getElementById('subs-main-val');
-      if (mainVal) mainVal.textContent = label;
-      showToast('Subtitles: ' + label);
-    } else {
-      const mainVal = document.getElementById('subs-main-val');
-      if (mainVal) mainVal.textContent = 'Off';
-    }
-    populateTracks();
-    // Go back to main after a short delay for feedback
-    setTimeout(closeSubPanel, 200);
-  }
-
-  // Legacy stubs (keep for backward compat with keyboard shortcuts / old code)
+  // Legacy stub for keyboard shortcut compatibility
   function applySpeed(speed, label) {
     if (video) video.playbackRate = speed;
-    const mainVal = document.getElementById('speed-main-val');
-    if (mainVal) mainVal.textContent = label || (speed === 1 ? 'Normal' : speed + '×');
-    const slider = document.getElementById('custom-speed-slider');
-    const valEl  = document.getElementById('custom-speed-val');
-    if (slider) slider.value = speed;
-    if (valEl)  valEl.textContent = speed.toFixed(speed % 1 === 0 ? 0 : 2) + '×';
-    document.querySelectorAll('#speed-chips-row .speed-chip-btn').forEach(el => {
+    document.querySelectorAll('#speed-chips-row .sp-chip').forEach(el => {
       el.classList.toggle('active', Math.abs(parseFloat(el.dataset.speed) - speed) < 0.001);
     });
   }
-  function toggleSpeedPanel()    { openSubPanel('speed'); }
-  function activateCustomSpeed() { openSubPanel('speed'); }
+  // Legacy stubs — keep so keyboard shortcuts still work
+  function toggleSpeedPanel()    { openSettings(); }
+  function activateCustomSpeed() { openSettings(); }
+  function openSubPanel()        {}
+  function closeSubPanel()       {}
+
+  // ── Audio tracks — populate list in settings popup ───────────────────────
+  function populateTracks() {
+    if (!video) return;
+    const atList = document.getElementById('audio-sub-list');
+    if (!atList) return;
+
+    // Only re-build when multiple audio tracks are available
+    if (!video.audioTracks || video.audioTracks.length <= 1) {
+      // Keep the default "Default" row, nothing to do
+      return;
+    }
+
+    atList.innerHTML = '';
+    Array.from(video.audioTracks).forEach((track, i) => {
+      const label = track.label || ('Track ' + (i + 1));
+      const row   = document.createElement('div');
+      row.className    = 'settings-row' + (track.enabled ? ' sr-active' : '');
+      row.dataset.idx  = i;
+      row.innerHTML    = `<i class="fa-solid fa-check sr-icon${track.enabled ? '' : ' fa-invisible'}"></i>
+                          <span class="sr-label">${label}</span>`;
+      row.onclick = () => {
+        Array.from(video.audioTracks).forEach(t => { t.enabled = false; });
+        track.enabled = true;
+        populateTracks();
+        showToast('Audio: ' + label);
+      };
+      atList.appendChild(row);
+    });
+  }
+
+  // fa-invisible helper (hide icon while keeping space)
+  const style = document.createElement('style');
+  style.textContent = '.fa-invisible { visibility: hidden; }';
+  document.head.appendChild(style);
 
   // Picture-in-Picture
   function togglePiP() {

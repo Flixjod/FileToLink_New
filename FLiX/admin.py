@@ -14,12 +14,51 @@ from pyrogram.types import (
 
 from config import Config
 from database import db
-from helper import small_caps, format_size, escape_markdown, format_uptime, human_size, check_owner
+from helper import (
+    small_caps, format_size, escape_markdown,
+    format_uptime, human_size, check_owner,
+    get_global_bandwidth_warning,
+)
 
 logger = logging.getLogger(__name__)
 
+# ─── Ban reason presets ───────────────────────────────────────────────────────
+BAN_REASON_PRESETS = [
+    ("🚨 Service Abuse",             "Service Abuse"),
+    ("🔞 Restricted/Prohibited Content", "Restricted/Prohibited Content"),
+    ("🤖 Spam/Bot Activity",         "Spam/Bot Activity"),
+    ("⚠️ Policy Violation",          "Policy Violation"),
+]
 
-async def show_panel(client: Client, source, panel_type: str):
+# ─── Helpers ─────────────────────────────────────────────────────────────────
+
+def _mention(user_id: str, name: str = None) -> str:
+    """Build a clickable Telegram mention link."""
+    display = name or f"User {user_id}"
+    return f"[{display}](tg://user?id={user_id})"
+
+
+def _fmt_cycle_info(days: int, hours: int) -> str:
+    if days > 0:
+        return f"{days}d {hours}h"
+    if hours > 0:
+        return f"{hours}h"
+    return "< 1h"
+
+
+async def _try_get_name(client: Client, user_id: str) -> str:
+    """Try to resolve a display name for a Telegram user_id."""
+    try:
+        u = await client.get_users(int(user_id))
+        name = (u.first_name or "").strip()
+        if u.last_name:
+            name = f"{name} {u.last_name}".strip()
+        return name or f"User {user_id}"
+    except Exception:
+        return f"User {user_id}"
+
+
+async def show_panel(client: Client, source, panel_type: str, **kwargs):
     config = Config.all()
     msg    = source.message if isinstance(source, CallbackQuery) else source
 
@@ -43,47 +82,120 @@ async def show_panel(client: Client, source, panel_type: str):
                 InlineKeyboardButton("🤖 ʙᴏᴛ ᴍᴏᴅᴇ",   callback_data="settings_botmode"),
                 InlineKeyboardButton("📢 ꜰᴏʀᴄᴇ ꜱᴜʙ",  callback_data="settings_fsub"),
             ],
+            [
+                InlineKeyboardButton("🚫 ʙᴀɴ ꜱʏꜱᴛᴇᴍ", callback_data="settings_bans"),
+            ],
             [InlineKeyboardButton("❌ ᴄʟᴏꜱᴇ", callback_data="settings_close")],
         ])
 
     elif panel_type == "bandwidth_panel":
-        max_bw    = Config.get("max_bandwidth", 107374182400)
-        bw_toggle = Config.get("bandwidth_mode", True)
-        bw_stats  = await db.get_bandwidth_stats()
-        bw_used   = bw_stats["total_bandwidth"]
-        bw_today  = bw_stats["today_bandwidth"]
-        bw_pct    = (bw_used / max_bw * 100) if max_bw else 0
+        max_bw      = Config.get("max_bandwidth", 107374182400)
+        bw_toggle   = Config.get("bandwidth_mode", True)
+        ubw_toggle  = Config.get("user_bandwidth_mode", False)
+        max_user_bw = Config.get("max_user_bandwidth", 10737418240)
+        bw_stats    = await db.get_bandwidth_stats()
+        bw_used     = bw_stats["total_bandwidth"]
+        bw_today    = bw_stats["today_bandwidth"]
+        bw_pct      = (bw_used / max_bw * 100) if max_bw else 0
+        days_rem    = bw_stats.get("days_remaining",  30)
+        hours_rem   = bw_stats.get("hours_remaining", 0)
+        reset_str   = _fmt_cycle_info(days_rem, hours_rem)
+        cs          = bw_stats.get("cycle_start")
+        ce          = bw_stats.get("cycle_end")
+        cs_str      = cs.strftime("%Y-%m-%d") if hasattr(cs, "strftime") else "N/A"
+        ce_str      = ce.strftime("%Y-%m-%d") if hasattr(ce, "strftime") else "N/A"
+
         text = (
             f"💠 **{small_caps('bandwidth settings')}** 💠\n\n"
-            f"⚡ **{small_caps('mode')}**       : {'🟢 ᴀᴄᴛɪᴠᴇ' if bw_toggle else '🔴 ɪɴᴀᴄᴛɪᴠᴇ'}\n"
-            f"📊 **{small_caps('limit')}**      : `{format_size(max_bw)}`\n"
-            f"📤 **{small_caps('used (total)')}**: `{format_size(bw_used)}` ({bw_pct:.1f}%)\n"
-            f"📅 **{small_caps('used today')}** : `{format_size(bw_today)}`"
+            f"⚡ **{small_caps('global mode')}**      : {'🟢 ᴀᴄᴛɪᴠᴇ' if bw_toggle else '🔴 ɪɴᴀᴄᴛɪᴠᴇ'}\n"
+            f"📊 **{small_caps('global limit')}**     : `{format_size(max_bw)}`\n"
+            f"📤 **{small_caps('used (total)')}**     : `{format_size(bw_used)}` ({bw_pct:.1f}%)\n"
+            f"📅 **{small_caps('used today')}**       : `{format_size(bw_today)}`\n"
+            f"🔄 **{small_caps('resets in')}**        : `{reset_str}` _(on `{ce_str}`)_\n"
+            f"📆 **{small_caps('cycle')}**            : `{cs_str}` → `{ce_str}`\n\n"
+            f"👤 **{small_caps('per-user mode')}**    : {'🟢 ᴀᴄᴛɪᴠᴇ' if ubw_toggle else '🔴 ɪɴᴀᴄᴛɪᴠᴇ'}\n"
+            f"📏 **{small_caps('per-user limit')}**   : `{format_size(max_user_bw)}` / 30 ᴅᴀʏꜱ\n"
+            f"ℹ️ _ꜱᴜᴅᴏ/ᴏᴡɴᴇʀ ᴀʀᴇ ᴇxᴇᴍᴘᴛ ꜰʀᴏᴍ ᴘᴇʀ-ᴜꜱᴇʀ ʟɪᴍɪᴛ_"
         )
         buttons = InlineKeyboardMarkup([
-            [InlineKeyboardButton("⚡ ᴛᴏɢɢʟᴇ",         callback_data="toggle_bandwidth")],
+            [InlineKeyboardButton("⚡ ᴛᴏɢɢʟᴇ ɢʟᴏʙᴀʟ",    callback_data="toggle_bandwidth")],
             [
-                InlineKeyboardButton("✏️ ꜱᴇᴛ ʟɪᴍɪᴛ",     callback_data="set_bandwidth_limit"),
-                InlineKeyboardButton("🔄 ʀᴇꜱᴇᴛ ᴜꜱᴀɢᴇ",   callback_data="reset_bandwidth"),
+                InlineKeyboardButton("✏️ ꜱᴇᴛ ɢʟᴏʙᴀʟ ʟɪᴍɪᴛ", callback_data="set_bandwidth_limit"),
+                InlineKeyboardButton("🔄 ʀᴇꜱᴇᴛ ᴜꜱᴀɢᴇ",       callback_data="reset_bandwidth"),
             ],
-            [InlineKeyboardButton("⬅️ ʙᴀᴄᴋ",           callback_data="settings_back")],
+            [InlineKeyboardButton("👤 ᴛᴏɢɢʟᴇ ᴘᴇʀ-ᴜꜱᴇʀ",    callback_data="toggle_user_bandwidth")],
+            [InlineKeyboardButton("✏️ ꜱᴇᴛ ᴘᴇʀ-ᴜꜱᴇʀ ʟɪᴍɪᴛ", callback_data="set_user_bandwidth_limit")],
+            [InlineKeyboardButton("⬅️ ʙᴀᴄᴋ",                callback_data="settings_back")],
         ])
 
     elif panel_type == "sudo_panel":
         sudo_users = await db.get_sudo_users()
-        count = len(sudo_users)
-        lines = "\n".join(f"  • `{u['user_id']}`" for u in sudo_users) if sudo_users else "  ɴᴏɴᴇ"
+        count      = len(sudo_users)
+        recent     = sudo_users[:5]  # show 5 most recent
+        lines_parts = []
+        for u in recent:
+            uid  = u["user_id"]
+            name = await _try_get_name(client, uid)
+            ts   = u.get("added_at")
+            ts_s = ts.strftime("%m-%d") if hasattr(ts, "strftime") else ""
+            lines_parts.append(f"  • {_mention(uid, name)} `{uid}` {f'_{ts_s}_' if ts_s else ''}")
+        lines = "\n".join(lines_parts) if lines_parts else "  ɴᴏɴᴇ"
+        if count > 5:
+            lines += f"\n  _…ᴀɴᴅ {count - 5} ᴍᴏʀᴇ_"
+
+        # Recent history
+        hist = await db.get_history("sudo_add", limit=3)
+        hist_lines = []
+        for h in hist:
+            ts = h.get("created_at")
+            ts_s = ts.strftime("%m-%d %H:%M") if hasattr(ts, "strftime") else ""
+            hist_lines.append(f"  ➕ `{h['target_id']}` ʙʏ `{h['by_id']}` _{ts_s}_")
+        hist_text = "\n".join(hist_lines) if hist_lines else "  ɴᴏɴᴇ"
+
         text = (
             f"💠 **{small_caps('sudo users')}** 💠\n\n"
             f"👥 **{small_caps('count')}** : `{count}`\n\n"
-            f"**{small_caps('list')}:**\n{lines}"
+            f"**{small_caps('recent sudo')}:**\n{lines}\n\n"
+            f"**{small_caps('recent additions')}:**\n{hist_text}"
         )
         buttons = InlineKeyboardMarkup([
             [
                 InlineKeyboardButton("➕ ᴀᴅᴅ",    callback_data="sudo_add"),
                 InlineKeyboardButton("➖ ʀᴇᴍᴏᴠᴇ", callback_data="sudo_remove"),
             ],
+            [InlineKeyboardButton("📋 ꜰᴜʟʟ ʟɪꜱᴛ",   callback_data="sudo_list_full")],
             [InlineKeyboardButton("⬅️ ʙᴀᴄᴋ", callback_data="settings_back")],
+        ])
+
+    elif panel_type == "sudo_list_panel":
+        sudo_users = await db.get_sudo_users()
+        count = len(sudo_users)
+        lines_parts = []
+        for i, u in enumerate(sudo_users, 1):
+            uid  = u["user_id"]
+            name = await _try_get_name(client, uid)
+            ts   = u.get("added_at")
+            ts_s = ts.strftime("%Y-%m-%d") if hasattr(ts, "strftime") else ""
+            lines_parts.append(f"  {i}. {_mention(uid, name)} `{uid}`\n     _Added: {ts_s} by `{u.get('added_by','?')}`_")
+        lines = "\n".join(lines_parts) if lines_parts else "  ɴᴏɴᴇ"
+
+        # Full history
+        hist = await db.get_history("sudo_remove", limit=5)
+        hist_lines = []
+        for h in hist:
+            ts   = h.get("created_at")
+            ts_s = ts.strftime("%m-%d %H:%M") if hasattr(ts, "strftime") else ""
+            hist_lines.append(f"  ➖ `{h['target_id']}` ʙʏ `{h['by_id']}` _{ts_s}_")
+        hist_text = "\n".join(hist_lines) if hist_lines else "  ɴᴏɴᴇ"
+
+        text = (
+            f"💠 **{small_caps('sudo users — full list')}** 💠\n\n"
+            f"👥 **{small_caps('total')}** : `{count}`\n\n"
+            f"**{small_caps('all sudo users')}:**\n{lines}\n\n"
+            f"**{small_caps('recent removals')}:**\n{hist_text}"
+        )
+        buttons = InlineKeyboardMarkup([
+            [InlineKeyboardButton("⬅️ ʙᴀᴄᴋ", callback_data="settings_sudo")],
         ])
 
     elif panel_type == "botmode_panel":
@@ -127,15 +239,105 @@ async def show_panel(client: Client, source, panel_type: str):
             [InlineKeyboardButton("⬅️ ʙᴀᴄᴋ", callback_data="settings_back")],
         ])
 
+    elif panel_type == "bans_panel":
+        banned_users = await db.get_banned_users(limit=5)
+        count        = await db.banned.count_documents({})
+        lines_parts  = []
+        for u in banned_users:
+            uid    = u["user_id"]
+            name   = await _try_get_name(client, uid)
+            reason = u.get("reason", "N/A")[:25]
+            ts     = u.get("banned_at")
+            ts_s   = ts.strftime("%m-%d") if hasattr(ts, "strftime") else ""
+            lines_parts.append(f"  • {_mention(uid, name)} `{uid}`\n    📋 `{reason}` _{ts_s}_")
+        lines = "\n".join(lines_parts) if lines_parts else "  ɴᴏɴᴇ"
+
+        # Recent history
+        hist = await db.get_history("unban", limit=3)
+        hist_lines = []
+        for h in hist:
+            ts   = h.get("created_at")
+            ts_s = ts.strftime("%m-%d %H:%M") if hasattr(ts, "strftime") else ""
+            hist_lines.append(f"  ✅ `{h['target_id']}` ᴜɴʙᴀɴɴᴇᴅ ʙʏ `{h['by_id']}` _{ts_s}_")
+        hist_text = "\n".join(hist_lines) if hist_lines else "  ɴᴏɴᴇ"
+
+        text = (
+            f"🚫 **{small_caps('ban system')}** 🚫\n\n"
+            f"📋 **{small_caps('total banned')}** : `{count}`\n\n"
+            f"**{small_caps('recently banned')}:**\n{lines}\n\n"
+            f"**{small_caps('recent unbans')}:**\n{hist_text}"
+        )
+        buttons = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("🔨 ʙᴀɴ ᴜꜱᴇʀ",     callback_data="ban_user_prompt"),
+                InlineKeyboardButton("✅ ᴜɴʙᴀɴ ᴜꜱᴇʀ",   callback_data="unban_user_prompt"),
+            ],
+            [InlineKeyboardButton("🔍 ᴄʜᴇᴄᴋ ʙᴀɴ",       callback_data="checkban_user_prompt")],
+            [InlineKeyboardButton("📋 ꜰᴜʟʟ ʙᴀɴ ʟɪꜱᴛ",   callback_data="ban_list_full")],
+            [InlineKeyboardButton("⬅️ ʙᴀᴄᴋ",             callback_data="settings_back")],
+        ])
+
+    elif panel_type == "bans_list_panel":
+        all_banned  = await db.get_banned_users()
+        count       = len(all_banned)
+        lines_parts = []
+        for i, u in enumerate(all_banned, 1):
+            uid    = u["user_id"]
+            name   = await _try_get_name(client, uid)
+            reason = u.get("reason", "N/A")[:30]
+            ts     = u.get("banned_at")
+            ts_s   = ts.strftime("%Y-%m-%d") if hasattr(ts, "strftime") else ""
+            lines_parts.append(
+                f"  {i}. {_mention(uid, name)} `{uid}`\n"
+                f"     📋 `{reason}`\n"
+                f"     👮 `{u.get('banned_by','?')}` · _{ts_s}_"
+            )
+        lines = "\n".join(lines_parts) if lines_parts else "  ɴᴏɴᴇ"
+
+        # Full ban history
+        hist = await db.get_history("ban", limit=5)
+        hist_lines = []
+        for h in hist:
+            ts   = h.get("created_at")
+            ts_s = ts.strftime("%m-%d %H:%M") if hasattr(ts, "strftime") else ""
+            note = h.get("note", "")[:20]
+            hist_lines.append(f"  🔨 `{h['target_id']}` ʙʏ `{h['by_id']}` _{ts_s}_ — `{note}`")
+        hist_text = "\n".join(hist_lines) if hist_lines else "  ɴᴏɴᴇ"
+
+        text = (
+            f"🚫 **{small_caps('banned users — full list')}** 🚫\n\n"
+            f"📋 **{small_caps('total')}** : `{count}`\n\n"
+            f"**{small_caps('all banned users')}:**\n{lines}\n\n"
+            f"**{small_caps('recent bans (history)')}:**\n{hist_text}"
+        )
+        buttons = InlineKeyboardMarkup([
+            [InlineKeyboardButton("⬅️ ʙᴀᴄᴋ", callback_data="settings_bans")],
+        ])
+
+    elif panel_type == "ban_reason_panel":
+        # Choose ban reason preset or custom — target_id passed via kwargs
+        target_id = kwargs.get("target_id", "?")
+        text = (
+            f"🔨 **{small_caps('choose ban reason')}**\n\n"
+            f"🆔 ᴛᴀʀɢᴇᴛ: `{target_id}`\n\n"
+            "ꜱᴇʟᴇᴄᴛ ᴀ ʀᴇᴀꜱᴏɴ ᴏʀ ᴄʜᴏᴏꜱᴇ **ᴄᴜꜱᴛᴏᴍ** ᴛᴏ ᴛʏᴘᴇ ʏᴏᴜʀ ᴏᴡɴ:"
+        )
+        preset_btns = [
+            [InlineKeyboardButton(label, callback_data=f"ban_preset_{target_id}_{value}")]
+            for label, value in BAN_REASON_PRESETS
+        ]
+        preset_btns += [
+            [InlineKeyboardButton("✏️ ᴄᴜꜱᴛᴏᴍ ʀᴇᴀꜱᴏɴ", callback_data=f"ban_custom_{target_id}")],
+            [InlineKeyboardButton("❌ ᴄᴀɴᴄᴇʟ",          callback_data="settings_bans")],
+        ]
+        buttons = InlineKeyboardMarkup(preset_btns)
+
     else:
         return
 
     if isinstance(source, CallbackQuery):
         try:
-            await source.message.edit_text(
-                text,
-                reply_markup=buttons,
-            )
+            await source.message.edit_text(text, reply_markup=buttons)
         except Exception:
             await client.send_message(
                 chat_id=source.message.chat.id,
@@ -191,15 +393,59 @@ async def ask_input(
                     pass
 
 
+async def _do_ban(client: Client, target_id: str, by_id: str, reason: str, callback: CallbackQuery = None):
+    """Perform the ban, notify the banned user, and refresh the bans panel."""
+    if int(target_id) in Config.OWNER_ID:
+        if callback:
+            await callback.answer(f"❌ {small_caps('cannot ban owner')}!", show_alert=True)
+        return
+
+    await db.ban_user(target_id, by_id, reason)
+
+    # Notify the banned user
+    try:
+        await client.send_message(
+            int(target_id),
+            f"🚫 **{small_caps('you have been banned')}**\n\n"
+            f"📋 **{small_caps('reason')}:** `{reason}`\n\n"
+            "ꜰᴏʀ ᴀᴘᴘᴇᴀʟꜱ, ᴄᴏɴᴛᴀᴄᴛ ᴛʜᴇ ᴀᴅᴍɪɴɪꜱᴛʀᴀᴛᴏʀ.",
+        )
+    except Exception:
+        pass  # User may have blocked the bot
+
+    if callback:
+        await callback.answer(f"🔨 `{target_id}` {small_caps('has been banned')}!", show_alert=True)
+        await show_panel(client, callback, "bans_panel")
+
+
 @Client.on_message(filters.command("bot_settings") & filters.private, group=2)
 async def open_settings(client: Client, message: Message):
     if not await check_owner(client, message):
         return
+
+    # Show global bandwidth warning if near limit
+    warn = await get_global_bandwidth_warning(db)
+    if warn:
+        pct  = warn["pct"] * 100
+        dr   = _fmt_cycle_info(warn["days_remaining"], warn["hours_remaining"])
+        from helper import format_size as _fs
+        await client.send_message(
+            chat_id=message.chat.id,
+            text=(
+                f"⚠️ **{small_caps('global bandwidth warning')}** ⚠️\n\n"
+                f"📊 **{small_caps('used')}:** `{_fs(warn['used'])}` / `{_fs(warn['limit'])}` "
+                f"({pct:.1f}%)\n"
+                f"⏳ **{small_caps('resets in')}:** `{dr}`\n\n"
+                "🔴 ᴛʜᴇ ʙᴏᴛ-ᴡɪᴅᴇ ʙᴀɴᴅᴡɪᴅᴛʜ ɪꜱ ʀᴜɴɴɪɴɢ ʟᴏᴡ!\n"
+                "ᴄᴏɴꜱɪᴅᴇʀ ɪɴᴄʀᴇᴀꜱɪɴɢ ᴛʜᴇ ʟɪᴍɪᴛ ᴏʀ ᴡᴀɪᴛɪɴɢ ꜰᴏʀ ᴛʜᴇ ᴄʏᴄʟᴇ ᴛᴏ ʀᴇꜱᴇᴛ."
+            ),
+        )
+
     await show_panel(client, message, "main_panel")
 
 
 @Client.on_callback_query(
-    filters.regex(r"^(settings_|toggle_|set_|sudo_|reset_).+"),
+    filters.regex(r"^(settings_|toggle_|set_|sudo_|reset_|ban_|unban_|checkban_).+"),
     group=2,
 )
 async def settings_callback(client: Client, callback: CallbackQuery):
@@ -214,6 +460,7 @@ async def settings_callback(client: Client, callback: CallbackQuery):
         "settings_sudo":      ("sudo_panel",      f"👥 {small_caps('sudo users')}"),
         "settings_botmode":   ("botmode_panel",   f"🤖 {small_caps('bot mode settings')}"),
         "settings_fsub":      ("fsub_panel",      f"📌 {small_caps('force sub settings')}"),
+        "settings_bans":      ("bans_panel",      f"🚫 {small_caps('ban system')}"),
         "settings_back":      ("main_panel",      f"⬅️ {small_caps('back to main menu')}"),
     }
     if data in panel_nav:
@@ -228,6 +475,17 @@ async def settings_callback(client: Client, callback: CallbackQuery):
         except Exception:
             pass
         return
+
+    # Full-list panels
+    if data == "sudo_list_full":
+        await callback.answer(f"📋 {small_caps('loading full list')}…", show_alert=False)
+        return await show_panel(client, callback, "sudo_list_panel")
+
+    if data == "ban_list_full":
+        await callback.answer(f"📋 {small_caps('loading full ban list')}…", show_alert=False)
+        return await show_panel(client, callback, "bans_list_panel")
+
+    # ── Global Bandwidth ────────────────────────────────────────────────────
 
     if data == "toggle_bandwidth":
         new_val = not config.get("bandwidth_mode", True)
@@ -277,6 +535,41 @@ async def settings_callback(client: Client, callback: CallbackQuery):
             await callback.answer(f"❌ {small_caps('failed to reset bandwidth')}.", show_alert=True)
         return await show_panel(client, callback, "bandwidth_panel")
 
+    # ── Per-User Bandwidth ───────────────────────────────────────────────────
+
+    if data == "toggle_user_bandwidth":
+        new_val = not config.get("user_bandwidth_mode", False)
+        await Config.update(db.db, {"user_bandwidth_mode": new_val})
+        state = small_caps("enabled") if new_val else small_caps("disabled")
+        await callback.answer(f"✅ {small_caps('per-user bandwidth')} {state}!", show_alert=True)
+        return await show_panel(client, callback, "bandwidth_panel")
+
+    if data == "set_user_bandwidth_limit":
+        text = await ask_input(
+            client, callback.from_user.id,
+            f"👤 **{small_caps('send per-user bandwidth limit in bytes')}**\n\n"
+            f"_{small_caps('applies to free users only — sudo/owner are exempt')}_\n\n"
+            f"{small_caps('examples')}:\n"
+            "`10737418240`  — 10 GB / 30 ᴅᴀʏꜱ\n"
+            "`5368709120`   — 5 GB / 30 ᴅᴀʏꜱ\n"
+            "`2147483648`   — 2 GB / 30 ᴅᴀʏꜱ\n\n"
+            f"{small_caps('send')} `0` {small_caps('to reset to 10 gb')}.",
+        )
+        if text is None:
+            return
+        if not text.isdigit():
+            await callback.answer(f"❌ {small_caps('invalid number')}!", show_alert=True)
+            return
+        new_limit = int(text) or 10737418240
+        await Config.update(db.db, {"max_user_bandwidth": new_limit})
+        await callback.answer(
+            f"✅ {small_caps('per-user limit set to')} {format_size(new_limit)}/30d!",
+            show_alert=True,
+        )
+        return await show_panel(client, callback, "bandwidth_panel")
+
+    # ── Sudo Users ───────────────────────────────────────────────────────────
+
     if data == "sudo_add":
         text = await ask_input(
             client, callback.from_user.id,
@@ -298,12 +591,14 @@ async def settings_callback(client: Client, callback: CallbackQuery):
         )
         if text is None:
             return
-        result = await db.remove_sudo_user(text)
+        result = await db.remove_sudo_user(text, str(callback.from_user.id))
         if result:
             await callback.answer(f"✅ `{text}` {small_caps('removed from sudo')}!", show_alert=True)
         else:
             await callback.answer(f"❌ `{text}` {small_caps('not found in sudo list')}.", show_alert=True)
         return await show_panel(client, callback, "sudo_panel")
+
+    # ── Force Sub ────────────────────────────────────────────────────────────
 
     if data == "set_fsub_id":
         text = await ask_input(
@@ -373,6 +668,360 @@ async def settings_callback(client: Client, callback: CallbackQuery):
             return await show_panel(client, callback, "fsub_panel")
         return
 
+    # ── Ban System — Preset selection ────────────────────────────────────────
+
+    if data.startswith("ban_preset_"):
+        # Format: ban_preset_<target_id>_<reason_encoded>
+        rest      = data[len("ban_preset_"):]
+        parts     = rest.split("_", 1)
+        target_id = parts[0]
+        reason    = parts[1].replace("_", " ") if len(parts) > 1 else "Policy Violation"
+        await _do_ban(client, target_id, str(callback.from_user.id), reason, callback)
+        return
+
+    if data.startswith("ban_custom_"):
+        target_id = data[len("ban_custom_"):]
+        custom = await ask_input(
+            client, callback.from_user.id,
+            f"✏️ **{small_caps('type a custom ban reason')}** for `{target_id}`:",
+        )
+        if custom is None:
+            return await show_panel(client, callback, "bans_panel")
+        await _do_ban(client, target_id, str(callback.from_user.id), custom, callback)
+        return
+
+    # ── Ban System via Settings Panel ────────────────────────────────────────
+
+    if data == "ban_user_prompt":
+        text = await ask_input(
+            client, callback.from_user.id,
+            f"🔨 **{small_caps('send user id to ban')}**",
+        )
+        if text is None:
+            return
+        if not text.lstrip("-").isdigit():
+            await callback.answer(f"❌ {small_caps('invalid user id')}!", show_alert=True)
+            return
+        if int(text) in Config.OWNER_ID:
+            await callback.answer(f"❌ {small_caps('cannot ban owner')}!", show_alert=True)
+            return
+        # Show reason picker
+        return await show_panel(client, callback, "ban_reason_panel", target_id=text)
+
+    if data == "unban_user_prompt":
+        text = await ask_input(
+            client, callback.from_user.id,
+            f"✅ **{small_caps('send user id to unban')}**",
+        )
+        if text is None:
+            return
+        if not text.lstrip("-").isdigit():
+            await callback.answer(f"❌ {small_caps('invalid user id')}!", show_alert=True)
+            return
+        result = await db.unban_user(text, str(callback.from_user.id))
+        if result:
+            # Try to notify unbanned user
+            try:
+                await client.send_message(
+                    int(text),
+                    f"✅ **{small_caps('you have been unbanned')}**\n\n"
+                    "ʏᴏᴜ ᴄᴀɴ ɴᴏᴡ ᴜꜱᴇ ᴛʜᴇ ʙᴏᴛ ᴀɢᴀɪɴ.",
+                )
+            except Exception:
+                pass
+            await callback.answer(f"✅ `{text}` {small_caps('has been unbanned')}!", show_alert=True)
+        else:
+            await callback.answer(f"❌ `{text}` {small_caps('was not banned')}.", show_alert=True)
+        return await show_panel(client, callback, "bans_panel")
+
+    if data == "checkban_user_prompt":
+        text = await ask_input(
+            client, callback.from_user.id,
+            f"🔍 **{small_caps('send user id to check ban status')}**",
+        )
+        if text is None:
+            return
+        if not text.lstrip("-").isdigit():
+            await callback.answer(f"❌ {small_caps('invalid user id')}!", show_alert=True)
+            return
+        ban_info = await db.get_ban_info(text)
+        if ban_info:
+            reason    = ban_info.get("reason", "N/A")
+            banned_at = ban_info.get("banned_at", "N/A")
+            dt = banned_at.strftime("%Y-%m-%d %H:%M") if hasattr(banned_at, "strftime") else str(banned_at)
+            await callback.answer(
+                f"🔨 `{text}` {small_caps('is banned')}\n"
+                f"{small_caps('reason')}: {reason}\n"
+                f"{small_caps('since')}: {dt}",
+                show_alert=True,
+            )
+        else:
+            await callback.answer(f"✅ `{text}` {small_caps('is not banned')}.", show_alert=True)
+        return await show_panel(client, callback, "bans_panel")
+
+
+# ─── Ban / Unban Commands ────────────────────────────────────────────────────
+
+@Client.on_message(filters.command("ban") & filters.private, group=2)
+async def ban_command(client: Client, message: Message):
+    """Ban a user. Usage: /ban <user_id> [reason]"""
+    if not await check_owner(client, message):
+        return
+
+    if len(message.command) < 2:
+        await client.send_message(
+            chat_id=message.chat.id,
+            text=(
+                f"❌ **{small_caps('usage')}**\n\n"
+                f"`/ban <user_id> [reason]`\n\n"
+                f"{small_caps('example')}: `/ban 123456789 spam`"
+            ),
+            reply_to_message_id=message.id,
+        )
+        return
+
+    target_id = message.command[1]
+    reason    = " ".join(message.command[2:]) if len(message.command) > 2 else "No reason provided"
+
+    if not target_id.lstrip("-").isdigit():
+        await client.send_message(
+            chat_id=message.chat.id,
+            text=f"❌ **{small_caps('invalid user id')}**",
+            reply_to_message_id=message.id,
+        )
+        return
+
+    if int(target_id) in Config.OWNER_ID:
+        await client.send_message(
+            chat_id=message.chat.id,
+            text=f"❌ **{small_caps('cannot ban the owner')}**",
+            reply_to_message_id=message.id,
+        )
+        return
+
+    already_banned = await db.is_banned(target_id)
+    await db.ban_user(target_id, str(message.from_user.id), reason)
+
+    # Notify banned user
+    try:
+        await client.send_message(
+            int(target_id),
+            f"🚫 **{small_caps('you have been banned')}**\n\n"
+            f"📋 **{small_caps('reason')}:** `{reason}`\n\n"
+            "ꜰᴏʀ ᴀᴘᴘᴇᴀʟꜱ, ᴄᴏɴᴛᴀᴄᴛ ᴛʜᴇ ᴀᴅᴍɪɴɪꜱᴛʀᴀᴛᴏʀ.",
+        )
+    except Exception:
+        pass
+
+    status = small_caps("updated") if already_banned else small_caps("banned")
+    await client.send_message(
+        chat_id=message.chat.id,
+        text=(
+            f"🔨 **{small_caps('user banned')}**\n\n"
+            f"🆔 **{small_caps('user id')}:** `{target_id}`\n"
+            f"📋 **{small_caps('reason')}:** `{reason}`\n"
+            f"📌 **{small_caps('status')}:** {status}"
+        ),
+        reply_to_message_id=message.id,
+    )
+
+
+@Client.on_message(filters.command("unban") & filters.private, group=2)
+async def unban_command(client: Client, message: Message):
+    """Unban a user. Usage: /unban <user_id>"""
+    if not await check_owner(client, message):
+        return
+
+    if len(message.command) < 2:
+        await client.send_message(
+            chat_id=message.chat.id,
+            text=f"❌ **{small_caps('usage')}**\n\n`/unban <user_id>`",
+            reply_to_message_id=message.id,
+        )
+        return
+
+    target_id = message.command[1]
+    if not target_id.lstrip("-").isdigit():
+        await client.send_message(
+            chat_id=message.chat.id,
+            text=f"❌ **{small_caps('invalid user id')}**",
+            reply_to_message_id=message.id,
+        )
+        return
+
+    result = await db.unban_user(target_id, str(message.from_user.id))
+    if result:
+        # Notify unbanned user
+        try:
+            await client.send_message(
+                int(target_id),
+                f"✅ **{small_caps('you have been unbanned')}**\n\n"
+                "ʏᴏᴜ ᴄᴀɴ ɴᴏᴡ ᴜꜱᴇ ᴛʜᴇ ʙᴏᴛ ᴀɢᴀɪɴ.",
+            )
+        except Exception:
+            pass
+        await client.send_message(
+            chat_id=message.chat.id,
+            text=(
+                f"✅ **{small_caps('user unbanned')}**\n\n"
+                f"🆔 **{small_caps('user id')}:** `{target_id}`\n"
+                f"📌 {small_caps('the user can now use the bot again')}."
+            ),
+            reply_to_message_id=message.id,
+        )
+    else:
+        await client.send_message(
+            chat_id=message.chat.id,
+            text=(
+                f"❌ **{small_caps('user not found in ban list')}**\n\n"
+                f"🆔 `{target_id}` {small_caps('was not banned')}."
+            ),
+            reply_to_message_id=message.id,
+        )
+
+
+@Client.on_message(filters.command("checkban") & filters.private, group=2)
+async def checkban_command(client: Client, message: Message):
+    """Check ban status of a user. Usage: /checkban <user_id>"""
+    if not await check_owner(client, message):
+        return
+
+    if len(message.command) < 2:
+        await client.send_message(
+            chat_id=message.chat.id,
+            text=f"❌ **{small_caps('usage')}**\n\n`/checkban <user_id>`",
+            reply_to_message_id=message.id,
+        )
+        return
+
+    target_id = message.command[1]
+    if not target_id.lstrip("-").isdigit():
+        await client.send_message(
+            chat_id=message.chat.id,
+            text=f"❌ **{small_caps('invalid user id')}**",
+            reply_to_message_id=message.id,
+        )
+        return
+
+    ban_info = await db.get_ban_info(target_id)
+    if ban_info:
+        reason    = ban_info.get("reason", "N/A")
+        banned_by = ban_info.get("banned_by", "N/A")
+        banned_at = ban_info.get("banned_at")
+        dt = banned_at.strftime("%Y-%m-%d %H:%M UTC") if hasattr(banned_at, "strftime") else str(banned_at)
+        await client.send_message(
+            chat_id=message.chat.id,
+            text=(
+                f"🔨 **{small_caps('user is banned')}**\n\n"
+                f"🆔 **{small_caps('user id')}:**   `{target_id}`\n"
+                f"📋 **{small_caps('reason')}:**    `{reason}`\n"
+                f"👮 **{small_caps('banned by')}:** `{banned_by}`\n"
+                f"📅 **{small_caps('since')}:**     `{dt}`"
+            ),
+            reply_to_message_id=message.id,
+        )
+    else:
+        await client.send_message(
+            chat_id=message.chat.id,
+            text=(
+                f"✅ **{small_caps('user is not banned')}**\n\n"
+                f"🆔 `{target_id}` {small_caps('has no active ban')}."
+            ),
+            reply_to_message_id=message.id,
+        )
+
+
+@Client.on_message(filters.command("bwcheck") & filters.private, group=2)
+async def bwcheck_command(client: Client, message: Message):
+    """Check per-user bandwidth. Usage: /bwcheck <user_id>"""
+    if not await check_owner(client, message):
+        return
+
+    if len(message.command) < 2:
+        await client.send_message(
+            chat_id=message.chat.id,
+            text=f"❌ **{small_caps('usage')}**\n\n`/bwcheck <user_id>`",
+            reply_to_message_id=message.id,
+        )
+        return
+
+    target_id = message.command[1]
+    if not target_id.lstrip("-").isdigit():
+        await client.send_message(
+            chat_id=message.chat.id,
+            text=f"❌ **{small_caps('invalid user id')}**",
+            reply_to_message_id=message.id,
+        )
+        return
+
+    user_bw      = await db.get_user_bandwidth(target_id)
+    max_user_bw  = Config.get("max_user_bandwidth", 10737418240)
+    used         = user_bw["used"]
+    cycle_start  = user_bw["cycle_start"]
+    cycle_end    = user_bw["cycle_end"]
+    days_rem     = user_bw.get("days_remaining", 30)
+    hours_rem    = user_bw.get("hours_remaining", 0)
+    pct          = (used / max_user_bw * 100) if max_user_bw else 0
+    remaining    = max(0, max_user_bw - used)
+    cs = cycle_start.strftime("%Y-%m-%d") if hasattr(cycle_start, "strftime") else str(cycle_start)
+    ce = cycle_end.strftime("%Y-%m-%d")   if hasattr(cycle_end,   "strftime") else str(cycle_end)
+    reset_str    = _fmt_cycle_info(days_rem, hours_rem)
+
+    await client.send_message(
+        chat_id=message.chat.id,
+        text=(
+            f"📊 **{small_caps('user bandwidth')}**\n\n"
+            f"🆔 **{small_caps('user id')}:**       `{target_id}`\n"
+            f"📤 **{small_caps('used')}:**           `{format_size(used)}` ({pct:.1f}%)\n"
+            f"📏 **{small_caps('limit')}:**          `{format_size(max_user_bw)}` / 30d\n"
+            f"📉 **{small_caps('remaining')}:**      `{format_size(remaining)}`\n"
+            f"🔄 **{small_caps('resets in')}:**      `{reset_str}`\n"
+            f"📅 **{small_caps('cycle')}:**          `{cs}` → `{ce}`"
+        ),
+        reply_to_message_id=message.id,
+    )
+
+
+@Client.on_message(filters.command("bwreset") & filters.private, group=2)
+async def bwreset_command(client: Client, message: Message):
+    """Manually reset a user's bandwidth cycle. Usage: /bwreset <user_id>"""
+    if not await check_owner(client, message):
+        return
+
+    if len(message.command) < 2:
+        await client.send_message(
+            chat_id=message.chat.id,
+            text=f"❌ **{small_caps('usage')}**\n\n`/bwreset <user_id>`",
+            reply_to_message_id=message.id,
+        )
+        return
+
+    target_id = message.command[1]
+    if not target_id.lstrip("-").isdigit():
+        await client.send_message(
+            chat_id=message.chat.id,
+            text=f"❌ **{small_caps('invalid user id')}**",
+            reply_to_message_id=message.id,
+        )
+        return
+
+    ok = await db.reset_user_bandwidth(target_id)
+    if ok:
+        await client.send_message(
+            chat_id=message.chat.id,
+            text=(
+                f"🔄 **{small_caps('bandwidth reset')}**\n\n"
+                f"🆔 `{target_id}` — {small_caps('cycle reset to zero')}."
+            ),
+            reply_to_message_id=message.id,
+        )
+    else:
+        await client.send_message(
+            chat_id=message.chat.id,
+            text=f"❌ **{small_caps('failed to reset bandwidth')}**",
+            reply_to_message_id=message.id,
+        )
+
 
 @Client.on_message(filters.command("adminstats") & filters.private, group=2)
 async def adminstats_command(client: Client, message: Message):
@@ -383,20 +1032,32 @@ async def adminstats_command(client: Client, message: Message):
     stats      = await db.get_stats()
     bw_stats   = await db.get_bandwidth_stats()
 
-    max_bw  = Config.get("max_bandwidth", 107374182400)
-    bw_used = bw_stats["total_bandwidth"]
-    bw_pct  = (bw_used / max_bw * 100) if max_bw else 0
-    bw_mode = f"🟢 {small_caps('active')}" if Config.get("bandwidth_mode", True) else f"🔴 {small_caps('inactive')}"
+    max_bw      = Config.get("max_bandwidth", 107374182400)
+    max_user_bw = Config.get("max_user_bandwidth", 10737418240)
+    bw_used     = bw_stats["total_bandwidth"]
+    bw_pct      = (bw_used / max_bw * 100) if max_bw else 0
+    bw_mode     = f"🟢 {small_caps('active')}" if Config.get("bandwidth_mode", True) else f"🔴 {small_caps('inactive')}"
+    ubw_mode    = f"🟢 {small_caps('active')}" if Config.get("user_bandwidth_mode", False) else f"🔴 {small_caps('inactive')}"
+    banned_cnt  = await db.banned.count_documents({})
+    days_rem    = bw_stats.get("days_remaining",  30)
+    hours_rem   = bw_stats.get("hours_remaining", 0)
+    reset_str   = _fmt_cycle_info(days_rem, hours_rem)
+    ce          = bw_stats.get("cycle_end")
+    ce_str      = ce.strftime("%Y-%m-%d") if hasattr(ce, "strftime") else "N/A"
 
     text = (
         f"📊 **{small_caps('admin statistics')}**\n\n"
-        f"⏱️ **{small_caps('uptime')}:**         `{uptime_str}`\n\n"
-        f"👥 **{small_caps('total users')}:**     `{stats['total_users']}`\n"
-        f"📂 **{small_caps('total files')}:**     `{stats['total_files']}`\n\n"
-        f"📡 **{small_caps('bandwidth mode')}:**  {bw_mode}\n"
-        f"📶 **{small_caps('bw limit')}:**        `{format_size(max_bw)}`\n"
-        f"📤 **{small_caps('bw used total')}:**   `{format_size(bw_used)}` ({bw_pct:.1f}%)\n"
-        f"📅 **{small_caps('bw used today')}:**   `{format_size(bw_stats['today_bandwidth'])}`"
+        f"⏱️ **{small_caps('uptime')}:**             `{uptime_str}`\n\n"
+        f"👥 **{small_caps('total users')}:**         `{stats['total_users']}`\n"
+        f"📂 **{small_caps('total files')}:**         `{stats['total_files']}`\n"
+        f"🚫 **{small_caps('banned users')}:**        `{banned_cnt}`\n\n"
+        f"📡 **{small_caps('global bw mode')}:**      {bw_mode}\n"
+        f"📶 **{small_caps('global bw limit')}:**     `{format_size(max_bw)}`\n"
+        f"📤 **{small_caps('bw used total')}:**       `{format_size(bw_used)}` ({bw_pct:.1f}%)\n"
+        f"📅 **{small_caps('bw used today')}:**       `{format_size(bw_stats['today_bandwidth'])}`\n"
+        f"🔄 **{small_caps('bw resets in')}:**        `{reset_str}` _(on `{ce_str}`)_\n\n"
+        f"👤 **{small_caps('per-user bw mode')}:**    {ubw_mode}\n"
+        f"📏 **{small_caps('per-user bw limit')}:**   `{format_size(max_user_bw)}` / 30d"
     )
 
     await client.send_message(
@@ -414,10 +1075,7 @@ async def revoke_command(client: Client, message: Message):
     if len(message.command) < 2:
         await client.send_message(
             chat_id=message.chat.id,
-            text=(
-                f"❌ **{small_caps('usage')}**\n\n"
-                f"`/revoke <file_hash>`"
-            ),
+            text=f"❌ **{small_caps('usage')}**\n\n`/revoke <file_hash>`",
             reply_to_message_id=message.id,
         )
         return
@@ -437,7 +1095,6 @@ async def revoke_command(client: Client, message: Message):
         return
 
     safe_name = escape_markdown(file_data["file_name"])
-    # Routes to gen.py's cb_revoke_confirm handler via the shared "revoke_<hash>" pattern.
     await client.send_message(
         chat_id=message.chat.id,
         text=(
@@ -467,10 +1124,7 @@ async def revokeall_command(client: Client, message: Message):
         if not raw.lstrip("-").isdigit():
             await client.send_message(
                 chat_id=message.chat.id,
-                text=(
-                    f"❌ **{small_caps('invalid user id')}**\n\n"
-                    f"`/revokeall <user_id>`"
-                ),
+                text=f"❌ **{small_caps('invalid user id')}**\n\n`/revokeall <user_id>`",
                 reply_to_message_id=message.id,
             )
             return
@@ -499,14 +1153,8 @@ async def revokeall_command(client: Client, message: Message):
             reply_to_message_id=message.id,
             reply_markup=InlineKeyboardMarkup([
                 [
-                    InlineKeyboardButton(
-                        f"✅ {small_caps('confirm')}",
-                        callback_data=f"revokeuser_confirm_{target_id}",
-                    ),
-                    InlineKeyboardButton(
-                        f"❌ {small_caps('cancel')}",
-                        callback_data="revokeall_cancel",
-                    ),
+                    InlineKeyboardButton(f"✅ {small_caps('confirm')}", callback_data=f"revokeuser_confirm_{target_id}"),
+                    InlineKeyboardButton(f"❌ {small_caps('cancel')}",  callback_data="revokeall_cancel"),
                 ]
             ]),
         )
@@ -549,9 +1197,7 @@ async def revokeall_callback(client: Client, callback: CallbackQuery):
     if callback.data == "revokeall_cancel":
         await callback.answer(f"❌ {small_caps('cancelled')}.", show_alert=False)
         try:
-            await callback.message.edit_text(
-                f"❌ **{small_caps('revokeall cancelled')}.**"
-            )
+            await callback.message.edit_text(f"❌ **{small_caps('revokeall cancelled')}.**")
         except Exception:
             pass
         return

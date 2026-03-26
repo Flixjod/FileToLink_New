@@ -14,6 +14,7 @@ from pyrogram.types import (
 
 from config import Config
 from helper import Cryptic, format_size, escape_markdown, small_caps, check_fsub, check_owner
+from helper.bandwidth import check_user_bandwidth_limit, get_user_bandwidth_warning
 from database import db
 
 logger = logging.getLogger(__name__)
@@ -38,6 +39,23 @@ async def file_handler(client: Client, message: Message):
     user    = message.from_user
     user_id = user.id
 
+    # Ban check — block banned users from generating links
+    if await db.is_banned(str(user_id)):
+        ban_info = await db.get_ban_info(str(user_id))
+        reason   = ban_info.get("reason", "N/A") if ban_info else "N/A"
+        await client.send_message(
+            chat_id=message.chat.id,
+            text=(
+                f"🚫 **{small_caps('you are banned')}**\n\n"
+                f"📋 **{small_caps('reason')}:** `{reason}`\n\n"
+                "ʏᴏᴜ ᴀʀᴇ ʙᴀɴɴᴇᴅ ꜰʀᴏᴍ ᴜꜱɪɴɢ ᴛʜɪꜱ ʙᴏᴛ.\n"
+                "ᴄᴏɴᴛᴀᴄᴛ ᴀɴ ᴀᴅᴍɪɴɪꜱᴛʀᴀᴛᴏʀ ɪꜰ ʏᴏᴜ ʙᴇʟɪᴇᴠᴇ ᴛʜɪꜱ ɪꜱ ᴀ ᴍɪꜱᴛᴀᴋᴇ."
+            ),
+            reply_to_message_id=message.id,
+            disable_web_page_preview=True,
+        )
+        return
+
     if Config.get("fsub_mode", False):
         if not await check_fsub(client, message):
             return
@@ -51,6 +69,7 @@ async def file_handler(client: Client, message: Message):
         )
         return
 
+    # Global bandwidth check
     stats         = await db.get_bandwidth_stats()
     max_bandwidth = Config.get("max_bandwidth", 107374182400)
     if Config.get("bandwidth_mode", True) and stats["total_bandwidth"] >= max_bandwidth:
@@ -64,6 +83,52 @@ async def file_handler(client: Client, message: Message):
             disable_web_page_preview=True,
         )
         return
+
+    # Per-user bandwidth check (free users only — owner/sudo are exempt)
+    is_privileged = (user_id in Config.OWNER_ID) or await db.is_sudo_user(str(user_id))
+    if not is_privileged:
+        allowed_bw, user_bw = await check_user_bandwidth_limit(db, str(user_id))
+        if not allowed_bw:
+            max_ubw  = Config.get("max_user_bandwidth", 10737418240)
+            ce       = user_bw.get("cycle_end")
+            days_rem = user_bw.get("days_remaining", 0)
+            hrs_rem  = user_bw.get("hours_remaining", 0)
+            reset_dt = ce.strftime("%Y-%m-%d") if hasattr(ce, "strftime") else "soon"
+            reset_str = f"{days_rem}d {hrs_rem}h" if days_rem else f"{hrs_rem}h" if hrs_rem else "< 1h"
+            await client.send_message(
+                chat_id=message.chat.id,
+                text=(
+                    f"📊 **{small_caps('monthly bandwidth limit reached')}**\n\n"
+                    f"📏 **{small_caps('your limit')}:** `{format_size(max_ubw)}` / 30 ᴅᴀʏꜱ\n"
+                    f"🔄 **{small_caps('resets in')}:** `{reset_str}` _(on `{reset_dt}`)_\n\n"
+                    "ʏᴏᴜʀ ᴍᴏɴᴛʜʟʏ ʙᴀɴᴅᴡɪᴅᴛʜ ʜᴀꜱ ʙᴇᴇɴ ᴇxʜᴀᴜꜱᴛᴇᴅ.\n"
+                    "ᴘʟᴇᴀꜱᴇ ᴡᴀɪᴛ ꜰᴏʀ ʏᴏᴜʀ ᴄʏᴄʟᴇ ᴛᴏ ʀᴇꜱᴇᴛ."
+                ),
+                reply_to_message_id=message.id,
+                disable_web_page_preview=True,
+            )
+            return
+        # Warn user if approaching limit (80%+)
+        bw_warn = await get_user_bandwidth_warning(db, str(user_id))
+        if bw_warn:
+            pct      = bw_warn["pct"] * 100
+            days_rem = bw_warn.get("days_remaining", 30)
+            hrs_rem  = bw_warn.get("hours_remaining", 0)
+            reset_str = f"{days_rem}d {hrs_rem}h" if days_rem else f"{hrs_rem}h" if hrs_rem else "< 1h"
+            remaining = max(0, bw_warn["limit"] - bw_warn["used"])
+            await client.send_message(
+                chat_id=message.chat.id,
+                text=(
+                    f"⚠️ **{small_caps('bandwidth warning')}**\n\n"
+                    f"📊 **{small_caps('used')}:** `{format_size(bw_warn['used'])}` / "
+                    f"`{format_size(bw_warn['limit'])}` ({pct:.1f}%)\n"
+                    f"📉 **{small_caps('remaining')}:** `{format_size(remaining)}`\n"
+                    f"🔄 **{small_caps('resets in')}:** `{reset_str}`\n\n"
+                    "⚠️ ʏᴏᴜ ᴀʀᴇ ᴀᴘᴘʀᴏᴀᴄʜɪɴɢ ʏᴏᴜʀ ᴍᴏɴᴛʜʟʏ ʙᴀɴᴅᴡɪᴅᴛʜ ʟɪᴍɪᴛ."
+                ),
+                reply_to_message_id=message.id,
+                disable_web_page_preview=True,
+            )
 
     if message.document:
         file       = message.document

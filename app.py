@@ -38,6 +38,16 @@ def _bot_info(bot: Bot) -> dict:
     }
 
 
+def _is_privileged_user(user_id: str) -> bool:
+    """Return True if user is owner or sudo — exempt from per-user bandwidth."""
+    if not user_id:
+        return False
+    try:
+        return int(user_id) in Config.OWNER_ID
+    except (ValueError, TypeError):
+        return False
+
+
 def build_app(bot: Bot, database) -> web.Application:
     streaming_service = StreamingService(bot, database)
 
@@ -94,15 +104,38 @@ def build_app(bot: Bot, database) -> web.Application:
             "owner_username": "FLiX_LY",
         }
 
-    async def _tracked_stream(request: web.Request, file_hash: str, is_download: bool):
-        # One (file_hash, client_ip) pair = one unique session.
-        # Registration is idempotent: repeated range-requests from the same
-        # player only refresh the heartbeat, they never increment the counter.
+    async def _tracked_stream(
+        request: web.Request,
+        file_hash: str,
+        is_download: bool,
+        user_id: str = None,
+        is_privileged: bool = False,
+    ):
+        """Stream a file while tracking the session.
+
+        The per-user bandwidth check lives inside StreamingService.stream_file.
+        Ban checks happen in the Telegram bot layer before links are issued, and
+        the web layer enforces them here based on the file owner.
+        """
+        # Check if the file owner is banned — block web access too
+        file_data = await database.get_file_by_hash(file_hash)
+        if file_data:
+            owner_id = str(file_data.get("user_id", ""))
+            if owner_id and await database.is_banned(owner_id):
+                # File belongs to banned user — revoke access
+                raise web.HTTPNotFound(reason="file not available")
+
         client_ip   = _get_client_ip(request)
         session_key = f"{file_hash}:{client_ip}"
         await _register_session(session_key)
         try:
-            return await streaming_service.stream_file(request, file_hash, is_download=is_download)
+            return await streaming_service.stream_file(
+                request,
+                file_hash,
+                is_download=is_download,
+                user_id=user_id,
+                is_privileged=is_privileged,
+            )
         finally:
             await _unregister_session(session_key)
 
@@ -117,6 +150,11 @@ def build_app(bot: Bot, database) -> web.Application:
         file_data = await database.get_file_by_hash(file_hash)
         if not file_data:
             raise web.HTTPNotFound(reason="File not found")
+
+        # Block access if file belongs to a banned user
+        owner_id = str(file_data.get("user_id", ""))
+        if owner_id and await database.is_banned(owner_id):
+            raise web.HTTPNotFound(reason="File not available")
 
         # Also verify the file exists in the Flog/dump channel so we can
         # surface a clean 404 instead of a player error mid-stream.
@@ -185,12 +223,14 @@ def build_app(bot: Bot, database) -> web.Application:
             stats    = {"total_users": 0, "total_files": 0}
             bw_stats = {"total_bandwidth": 0, "today_bandwidth": 0}
 
-        max_bw    = Config.get("max_bandwidth", 107374182400)
-        bw_mode   = Config.get("bandwidth_mode", True)
-        bw_used   = bw_stats["total_bandwidth"]
-        bw_today  = bw_stats["today_bandwidth"]
-        remaining = max(0, max_bw - bw_used)
-        bw_pct    = round((bw_used / max_bw * 100) if max_bw else 0, 1)
+        max_bw      = Config.get("max_bandwidth", 107374182400)
+        bw_mode     = Config.get("bandwidth_mode", True)
+        ubw_mode    = Config.get("user_bandwidth_mode", False)
+        max_user_bw = Config.get("max_user_bandwidth", 10737418240)
+        bw_used     = bw_stats["total_bandwidth"]
+        bw_today    = bw_stats["today_bandwidth"]
+        remaining   = max(0, max_bw - bw_used)
+        bw_pct      = round((bw_used / max_bw * 100) if max_bw else 0, 1)
 
         try:
             ram          = psutil.virtual_memory()
@@ -209,21 +249,23 @@ def build_app(bot: Bot, database) -> web.Application:
 
         return {
             **info,
-            "total_users":  stats.get("total_users",  0),
-            "total_chats":  stats.get("total_users",  0),
-            "total_files":  stats.get("total_files",  0),
-            "ram_used":     ram_used_fmt,
-            "ram_pct":      ram_pct,
-            "cpu_pct":      cpu_pct,
-            "uptime":       uptime_str,
-            "bw_mode":      bw_mode,
-            "bw_limit":     format_size(max_bw),
-            "bw_used":      format_size(bw_used),
-            "bw_today":     format_size(bw_today),
-            "bw_remaining": format_size(remaining),
-            "bw_pct":       bw_pct,
-            "bot_status":   "running" if getattr(bot, "me", None) else "initializing",
-            "active_conns": get_active_session_count(),
+            "total_users":    stats.get("total_users",  0),
+            "total_chats":    stats.get("total_users",  0),
+            "total_files":    stats.get("total_files",  0),
+            "ram_used":       ram_used_fmt,
+            "ram_pct":        ram_pct,
+            "cpu_pct":        cpu_pct,
+            "uptime":         uptime_str,
+            "bw_mode":        bw_mode,
+            "bw_limit":       format_size(max_bw),
+            "bw_used":        format_size(bw_used),
+            "bw_today":       format_size(bw_today),
+            "bw_remaining":   format_size(remaining),
+            "bw_pct":         bw_pct,
+            "ubw_mode":       ubw_mode,
+            "max_user_bw":    format_size(max_user_bw),
+            "bot_status":     "running" if getattr(bot, "me", None) else "initializing",
+            "active_conns":   get_active_session_count(),
         }
 
     def _format_uptime(seconds: float) -> str:

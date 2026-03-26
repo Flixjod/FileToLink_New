@@ -52,23 +52,27 @@ class Config:
         if not doc:
             logger.warning("⚠️ ᴄᴏɴꜰɪɢ ɴᴏᴛ ꜰᴏᴜɴᴅ ɪɴ ᴅʙ — ᴀᴘᴘʟˏɪɴɢ ꜰʀᴇꜱʜ ᴄᴏɴꜰɪɢ ᴠᴀʟᴜᴇꜱ")
             doc = {
-                "key":            "Settings",
-                "fsub_mode":      bool(cls.FSUB_ID),
-                "fsub_chat_id":   cls.FSUB_ID or 0,
-                "fsub_inv_link":  cls.FSUB_INV_LINK or "",
-                "bandwidth_mode": True,
-                "max_bandwidth":  int(os.environ.get("MAX_BANDWIDTH", 107374182400)),
-                "public_bot":     os.environ.get("PUBLIC_BOT", "False").lower() == "true",
-                "max_file_size":  int(os.environ.get("MAX_FILE_SIZE", 4294967296)),
+                "key":                 "Settings",
+                "fsub_mode":           bool(cls.FSUB_ID),
+                "fsub_chat_id":        cls.FSUB_ID or 0,
+                "fsub_inv_link":       cls.FSUB_INV_LINK or "",
+                "bandwidth_mode":      True,
+                "max_bandwidth":       int(os.environ.get("MAX_BANDWIDTH", 107374182400)),
+                "user_bandwidth_mode": False,
+                "max_user_bandwidth":  int(os.environ.get("MAX_USER_BANDWIDTH", 10737418240)),
+                "public_bot":          os.environ.get("PUBLIC_BOT", "False").lower() == "true",
+                "max_file_size":       int(os.environ.get("MAX_FILE_SIZE", 4294967296)),
             }
             await db.config.insert_one(doc)
             logger.info("✅ ᴄᴏɴꜰɪɢ ᴄʀᴇᴀᴛᴇᴅ & ꜰᴜʟʟˏ ᴛᴜɴᴇᴅ ɪɴ ᴅʙ")
         else:
             defaults = {
-                "bandwidth_mode": True,
-                "fsub_mode":      doc.get("fsub_mode", False),
-                "fsub_chat_id":   doc.get("fsub_chat_id", 0),
-                "fsub_inv_link":  doc.get("fsub_inv_link", ""),
+                "bandwidth_mode":      True,
+                "user_bandwidth_mode": False,
+                "max_user_bandwidth":  int(os.environ.get("MAX_USER_BANDWIDTH", 10737418240)),
+                "fsub_mode":           doc.get("fsub_mode", False),
+                "fsub_chat_id":        doc.get("fsub_chat_id", 0),
+                "fsub_inv_link":       doc.get("fsub_inv_link", ""),
             }
             missing = {k: v for k, v in defaults.items() if k not in doc}
             if missing:
