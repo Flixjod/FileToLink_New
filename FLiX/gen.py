@@ -13,7 +13,7 @@ from pyrogram.types import (
 )
 
 from config import Config
-from helper import Cryptic, format_size, escape_markdown, small_caps, check_fsub, check_owner
+from helper import Cryptic, format_size, escape_markdown, small_caps, check_fsub, check_owner, check_user_access
 from database import db
 
 logger = logging.getLogger(__name__)
@@ -51,19 +51,37 @@ async def file_handler(client: Client, message: Message):
         )
         return
 
-    stats         = await db.get_bandwidth_stats()
-    max_bandwidth = Config.get("max_bandwidth", 107374182400)
-    if Config.get("bandwidth_mode", True) and stats["total_bandwidth"] >= max_bandwidth:
+    # ── Per-user and global limit check ──────────────────────────────────────
+    access = await check_user_access(db, str(user_id))
+    if not access["allowed"]:
         await client.send_message(
             chat_id=message.chat.id,
             text=(
-                f"❌ **{small_caps('bandwidth limit reached')}!**\n\n"
-                "ᴘʟᴇᴀꜱᴇ ᴄᴏɴᴛᴀᴄᴛ ᴛʜᴇ ᴀᴅᴍɪɴɪꜱᴛʀᴀᴛᴏʀ."
+                f"🚫 **{small_caps('access blocked')}**\n\n"
+                f"{access.get('reason_human', 'Your access has been restricted.')}\n\n"
+                f"_ꜱᴜꜱᴘᴇɴꜱɪᴏɴ ʀᴇᴀꜱᴏɴ:_ `{access.get('reason', 'limit_exceeded')}`"
             ),
             reply_to_message_id=message.id,
             disable_web_page_preview=True,
         )
         return
+
+    # Warning: approaching limit (90%)
+    if access.get("warning"):
+        wtype = access.get("warning_type", "")
+        pct   = access.get("warning_pct", 90)
+        await client.send_message(
+            chat_id=message.chat.id,
+            text=(
+                f"⚠️ **{small_caps('limit warning')}**\n\n"
+                f"ʏᴏᴜ ʜᴀᴠᴇ ᴜꜱᴇᴅ **{pct}%** ᴏꜰ ʏᴏᴜʀ "
+                f"{'ʙᴀɴᴅᴡɪᴅᴛʜ' if wtype == 'bandwidth' else 'ꜰɪʟᴇ'} ǫᴜᴏᴛᴀ.\n"
+                "ᴘʟᴇᴀꜱᴇ ᴄᴏɴᴛᴀᴄᴛ ᴛʜᴇ ᴀᴅᴍɪɴɪꜱᴛʀᴀᴛᴏʀ ᴛᴏ ᴀᴠᴏɪᴅ ꜱᴜꜱᴘᴇɴꜱɪᴏɴ."
+            ),
+            reply_to_message_id=message.id,
+            disable_web_page_preview=True,
+        )
+        # Warning only — do NOT return, let the upload proceed
 
     if message.document:
         file       = message.document

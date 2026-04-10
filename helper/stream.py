@@ -647,6 +647,19 @@ class StreamingService:
             if max_bw and stats["total_bandwidth"] >= max_bw:
                 raise web.HTTPServiceUnavailable(reason="bandwidth limit exceeded")
 
+        # Per-user limit enforcement (blocks/quota)
+        file_user_id = file_data.get("user_id", "")
+        if file_user_id:
+            try:
+                from helper.bandwidth import check_user_access
+                user_access = await check_user_access(self.db, str(file_user_id))
+                if not user_access["allowed"]:
+                    raise web.HTTPServiceUnavailable(reason=user_access.get("reason", "user_blocked"))
+            except web.HTTPServiceUnavailable:
+                raise
+            except Exception as exc:
+                logger.warning("per-user access check error: %s", exc)
+
         file_size  = int(file_data["file_size"])
         file_name  = file_data["file_name"]
         message_id = str(file_data["message_id"])
@@ -792,11 +805,14 @@ class StreamingService:
         except Exception:
             pass
 
-        # Bandwidth accounting with deduplication
+        # Bandwidth accounting with deduplication (also track per-user)
         if bytes_sent > 0:
             should_track = await _should_track_bandwidth(client_ip, message_id, from_bytes)
             if should_track:
-                task = asyncio.ensure_future(self.db.track_bandwidth(message_id, bytes_sent))
+                user_id_for_bw = file_data.get("user_id", None)
+                task = asyncio.ensure_future(
+                    self.db.track_bandwidth(message_id, bytes_sent, user_id=user_id_for_bw)
+                )
                 task.add_done_callback(
                     lambda t: t.exception() and logger.error(
                         "track_bandwidth error: %s", t.exception()

@@ -67,6 +67,11 @@ class Bot(Client):
             BotCommand("revoke",       "🗑️ ʀᴇᴠᴏᴋᴇ ꜰɪʟᴇ ʙʏ ʜᴀꜱʜ"),
             BotCommand("revokeall",    "🗑️ ʙᴜʟᴋ ʀᴇᴠᴏᴋᴇ [ᴀʟʟ | ᴜꜱᴇʀ_ɪᴅ]"),
             BotCommand("logs",         "📄 ɢᴇᴛ ʙᴏᴛ ʟᴏɢꜱ"),
+            BotCommand("setlimit",     "📡 ꜱᴇᴛ ᴜꜱᴇʀ ʙᴡ/ꜰɪʟᴇ ʟɪᴍɪᴛ"),
+            BotCommand("blockuser",    "🚫 ʙʟᴏᴄᴋ ᴜꜱᴇʀ ᴀᴄᴄᴇꜱꜱ"),
+            BotCommand("unblockuser",  "✅ ᴜɴʙʟᴏᴄᴋ ᴜꜱᴇʀ ᴀᴄᴄᴇꜱꜱ"),
+            BotCommand("resetbw",      "🔄 ʀᴇꜱᴇᴛ ᴜꜱᴇʀ ʙᴀɴᴅᴡɪᴅᴛʜ"),
+            BotCommand("userstatus",   "👤 ᴠɪᴇᴡ ᴜꜱᴇʀ ꜱᴛᴀᴛᴜꜱ & ʟɪᴍɪᴛꜱ"),
         ]
         try:
             await self.set_bot_commands(user_commands)

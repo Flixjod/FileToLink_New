@@ -1,0 +1,1263 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ bot_name }} — Web App</title>
+  <link rel="icon" type="image/jpeg" href="https://i.ibb.co/2YsHg8tf/IMG-3062.jpg">
+  <link rel="shortcut icon" type="image/jpeg" href="https://i.ibb.co/2YsHg8tf/IMG-3062.jpg">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <style>
+    /* ── CSS Variables ───────────────────────────────────────── */
+    :root, [data-theme="dark"] {
+      --bg:            #0f0c29;
+      --bg-grad:       linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
+      --card:          rgba(255,255,255,0.06);
+      --card-border:   rgba(255,255,255,.12);
+      --card-shadow:   0 16px 48px rgba(0,0,0,.35);
+      --sidebar-bg:    rgba(255,255,255,0.05);
+      --sidebar-border:rgba(255,255,255,.1);
+      --text:          #ffffff;
+      --text-2:        rgba(255,255,255,.6);
+      --text-3:        rgba(255,255,255,.38);
+      --divider:       rgba(255,255,255,.08);
+      --input-bg:      rgba(255,255,255,.07);
+      --input-border:  rgba(255,255,255,.14);
+      --input-focus:   rgba(102,126,234,.5);
+      --btn-ghost:     rgba(255,255,255,.08);
+      --btn-ghost-b:   rgba(255,255,255,.14);
+      --hover:         rgba(255,255,255,.06);
+      --active:        rgba(102,126,234,.15);
+      --accent:        #667eea;
+      --accent2:       #764ba2;
+      --gold:          #f0b429;
+      --green:         #43e97b;
+      --red:           #f87171;
+      --blue:          #4facfe;
+      --purple:        #a78bfa;
+      --toggle-bg:     rgba(255,255,255,.08);
+      --toggle-border: rgba(255,255,255,.18);
+      --toggle-color:  rgba(255,255,255,.8);
+      --particle:      rgba(160,140,255,0.18);
+      --particle2:     rgba(102,126,234,0.14);
+      --scrollbar:     rgba(102,126,234,.28);
+      --badge-ok-bg:   rgba(67,233,123,.13);
+      --badge-ok-c:    #43e97b;
+      --badge-warn-bg: rgba(246,211,101,.13);
+      --badge-warn-c:  #f6d365;
+      --badge-err-bg:  rgba(255,107,107,.13);
+      --badge-err-c:   #ff6b6b;
+      --badge-blue-bg: rgba(79,172,254,.13);
+      --badge-blue-c:  #4facfe;
+    }
+    [data-theme="light"] {
+      --bg:            #eef0fb;
+      --bg-grad:       linear-gradient(135deg,#e8eaf6 0%,#ede7f6 50%,#e3e8f0 100%);
+      --card:          rgba(255,255,255,.9);
+      --card-border:   rgba(102,126,234,.18);
+      --card-shadow:   0 16px 48px rgba(102,126,234,.13);
+      --sidebar-bg:    rgba(255,255,255,.85);
+      --sidebar-border:rgba(102,126,234,.14);
+      --text:          #1a1a2e;
+      --text-2:        #4a5568;
+      --text-3:        #8896a8;
+      --divider:       rgba(102,126,234,.1);
+      --input-bg:      rgba(102,126,234,.07);
+      --input-border:  rgba(102,126,234,.2);
+      --input-focus:   rgba(102,126,234,.45);
+      --btn-ghost:     rgba(102,126,234,.09);
+      --btn-ghost-b:   rgba(102,126,234,.22);
+      --hover:         rgba(102,126,234,.07);
+      --active:        rgba(102,126,234,.12);
+      --accent:        #667eea;
+      --accent2:       #764ba2;
+      --gold:          #b37d0a;
+      --green:         #16a34a;
+      --red:           #dc2626;
+      --blue:          #2563eb;
+      --purple:        #6d28d9;
+      --toggle-bg:     rgba(102,126,234,.12);
+      --toggle-border: rgba(102,126,234,.3);
+      --toggle-color:  #4a5568;
+      --particle:      rgba(102,126,234,0.22);
+      --particle2:     rgba(118,75,162,0.16);
+      --scrollbar:     rgba(102,126,234,.22);
+      --badge-ok-bg:   rgba(67,233,123,.13);
+      --badge-ok-c:    #16a34a;
+      --badge-warn-bg: rgba(246,211,101,.18);
+      --badge-warn-c:  #b45309;
+      --badge-err-bg:  rgba(255,107,107,.13);
+      --badge-err-c:   #c0392b;
+      --badge-blue-bg: rgba(79,172,254,.13);
+      --badge-blue-c:  #1d6fa8;
+    }
+
+    /* ── Reset ───────────────────────────────────────────────── */
+    *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+    html { min-height:100%; background:var(--bg); overscroll-behavior:none; }
+    body {
+      font-family:'Poppins',sans-serif;
+      background: var(--bg-grad) fixed;
+      color: var(--text);
+      min-height:100vh;
+      overflow-x:hidden;
+      transition: background .4s, color .4s;
+    }
+    ::-webkit-scrollbar { width:5px; height:5px; }
+    ::-webkit-scrollbar-track { background:transparent; }
+    ::-webkit-scrollbar-thumb { background:var(--scrollbar); border-radius:3px; }
+
+    /* ── Particles ───────────────────────────────────────────── */
+    .bg-particles {
+      position:fixed; top:0; left:0; width:100%; height:100%;
+      z-index:0; overflow:hidden; pointer-events:none;
+    }
+    .bg-particles span {
+      position:absolute; display:block; border-radius:50%;
+      animation:float 25s linear infinite; bottom:-200px;
+    }
+    .bg-particles span:nth-child(odd)  { background:var(--particle); }
+    .bg-particles span:nth-child(even) { background:var(--particle2); }
+    .bg-particles span:nth-child(1)  { left:8%;  width:44px; height:44px; animation-delay:0s;   animation-duration:20s; }
+    .bg-particles span:nth-child(2)  { left:22%; width:18px; height:18px; animation-delay:2s;   animation-duration:14s; }
+    .bg-particles span:nth-child(3)  { left:50%; width:65px; height:65px; animation-delay:4s;   animation-duration:22s; }
+    .bg-particles span:nth-child(4)  { left:68%; width:22px; height:22px; animation-delay:1s;   animation-duration:18s; }
+    .bg-particles span:nth-child(5)  { left:83%; width:85px; height:85px; animation-delay:6s;   animation-duration:30s; }
+    .bg-particles span:nth-child(6)  { left:33%; width:28px; height:28px; animation-delay:8s;   animation-duration:16s; }
+    @keyframes float {
+      0%   { transform:translateY(0) rotate(0);     opacity:.12; }
+      15%  { opacity:.9; }
+      85%  { opacity:.6; }
+      100% { transform:translateY(-110vh) rotate(720deg); opacity:0; }
+    }
+
+    /* ── App Shell ───────────────────────────────────────────── */
+    .app-shell {
+      position:relative; z-index:1;
+      display:flex; flex-direction:column;
+      min-height:100vh;
+    }
+
+    /* ── Top Nav ─────────────────────────────────────────────── */
+    .topnav {
+      position:sticky; top:0; z-index:200;
+      display:flex; align-items:center; gap:12px;
+      padding:12px 20px;
+      background:rgba(15,12,41,.88);
+      backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px);
+      border-bottom:1px solid var(--divider);
+      transition: background .4s;
+    }
+    [data-theme="light"] .topnav {
+      background:rgba(255,255,255,.88);
+    }
+    .topnav-brand {
+      display:flex; align-items:center; gap:10px;
+      font-weight:800; font-size:.95rem; color:var(--text);
+      text-decoration:none; flex-shrink:0;
+    }
+    .topnav-brand-icon {
+      width:36px; height:36px; border-radius:11px;
+      background:linear-gradient(135deg,#667eea,#764ba2);
+      display:flex; align-items:center; justify-content:center;
+      font-size:.9rem; color:#fff;
+      box-shadow:0 4px 14px rgba(102,126,234,.4);
+      flex-shrink:0;
+    }
+    .topnav-search {
+      flex:1; max-width:460px; margin:0 auto;
+      position:relative;
+    }
+    .topnav-search input {
+      width:100%; padding:9px 16px 9px 42px;
+      border-radius:50px;
+      background:var(--input-bg);
+      border:1px solid var(--input-border);
+      color:var(--text);
+      font-family:'Poppins',sans-serif; font-size:.85rem;
+      outline:none;
+      transition:border .2s, box-shadow .2s;
+    }
+    .topnav-search input::placeholder { color:var(--text-3); }
+    .topnav-search input:focus { border-color:var(--input-focus); box-shadow:0 0 0 3px rgba(102,126,234,.15); }
+    .topnav-search i {
+      position:absolute; left:14px; top:50%; transform:translateY(-50%);
+      font-size:.78rem; color:var(--text-3);
+    }
+    .topnav-actions { display:flex; align-items:center; gap:8px; flex-shrink:0; }
+    .topnav-btn {
+      width:38px; height:38px; border-radius:10px;
+      background:var(--btn-ghost); border:1px solid var(--btn-ghost-b);
+      color:var(--text-2); font-size:.85rem;
+      cursor:pointer; display:flex; align-items:center; justify-content:center;
+      transition:all .2s ease;
+    }
+    .topnav-btn:hover { background:linear-gradient(135deg,#667eea,#764ba2); color:#fff; border-color:transparent; }
+
+    /* ── Main Layout ─────────────────────────────────────────── */
+    .main-layout {
+      display:flex; flex:1; min-height:0;
+    }
+
+    /* ── Sidebar ─────────────────────────────────────────────── */
+    .sidebar {
+      width:220px; flex-shrink:0;
+      padding:20px 12px;
+      background:var(--sidebar-bg);
+      border-right:1px solid var(--sidebar-border);
+      backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px);
+      position:sticky; top:62px; height:calc(100vh - 62px);
+      overflow-y:auto;
+      transition:transform .3s ease;
+    }
+    .sidebar-section { margin-bottom:24px; }
+    .sidebar-label {
+      font-size:.65rem; font-weight:700; letter-spacing:.08em;
+      text-transform:uppercase; color:var(--text-3);
+      padding:0 10px; margin-bottom:8px;
+    }
+    .sidebar-item {
+      display:flex; align-items:center; gap:12px;
+      padding:10px 12px; border-radius:12px;
+      cursor:pointer; color:var(--text-2); font-size:.86rem; font-weight:600;
+      transition:all .2s; text-decoration:none;
+      position:relative;
+    }
+    .sidebar-item:hover { background:var(--hover); color:var(--text); }
+    .sidebar-item.active {
+      background:linear-gradient(135deg,rgba(102,126,234,.2),rgba(118,75,162,.2));
+      color:var(--accent); border:1px solid rgba(102,126,234,.2);
+    }
+    .sidebar-item i { font-size:.9rem; width:18px; text-align:center; flex-shrink:0; }
+    .sidebar-badge {
+      margin-left:auto; padding:2px 8px; border-radius:999px;
+      font-size:.62rem; font-weight:700;
+      background:linear-gradient(135deg,#667eea,#764ba2); color:#fff;
+    }
+
+    /* ── Content Area ────────────────────────────────────────── */
+    .content {
+      flex:1; min-width:0;
+      padding:24px 20px;
+      overflow-y:auto;
+    }
+    .page { display:none; }
+    .page.active { display:block; animation:fadeUp .35s cubic-bezier(.22,.61,.36,1); }
+    @keyframes fadeUp {
+      from { opacity:0; transform:translateY(14px); }
+      to   { opacity:1; transform:translateY(0); }
+    }
+
+    /* ── Section Header ──────────────────────────────────────── */
+    .page-header {
+      display:flex; align-items:center; gap:14px;
+      margin-bottom:24px; flex-wrap:wrap;
+    }
+    .page-header-icon {
+      width:48px; height:48px; border-radius:15px;
+      display:flex; align-items:center; justify-content:center;
+      font-size:1.2rem; flex-shrink:0;
+    }
+    .phi-files  { background:linear-gradient(135deg,#f6d365,#fda085); color:#fff; box-shadow:0 4px 14px rgba(246,211,101,.3); }
+    .phi-stream { background:linear-gradient(135deg,#667eea,#764ba2); color:#fff; box-shadow:0 4px 14px rgba(102,126,234,.3); }
+    .phi-bw     { background:linear-gradient(135deg,#4facfe,#00f2fe); color:#fff; box-shadow:0 4px 14px rgba(79,172,254,.3); }
+    .phi-users  { background:linear-gradient(135deg,#43e97b,#38f9d7); color:#fff; box-shadow:0 4px 14px rgba(67,233,123,.3); }
+    .phi-dash   { background:linear-gradient(135deg,#fa709a,#fee140); color:#fff; box-shadow:0 4px 14px rgba(250,112,154,.3); }
+    .page-header-text h2 { font-size:1.25rem; font-weight:800; color:var(--text); }
+    .page-header-text p  { font-size:.83rem; color:var(--text-2); margin-top:2px; }
+
+    /* ── Stats Grid ──────────────────────────────────────────── */
+    .stats-row {
+      display:grid;
+      grid-template-columns:repeat(auto-fit,minmax(155px,1fr));
+      gap:14px; margin-bottom:28px;
+    }
+    .stat-mini {
+      background:var(--card); border:1px solid var(--card-border);
+      border-radius:18px; padding:18px 14px; text-align:center;
+      transition:transform .25s cubic-bezier(.34,1.56,.64,1), box-shadow .25s;
+    }
+    .stat-mini:hover { transform:translateY(-5px); box-shadow:0 12px 32px rgba(0,0,0,.15); }
+    .stat-mini-icon {
+      width:46px; height:46px; border-radius:13px;
+      display:flex; align-items:center; justify-content:center;
+      font-size:1.1rem; margin:0 auto 11px;
+    }
+    .smi-u { background:linear-gradient(135deg,#667eea,#764ba2); color:#fff; box-shadow:0 4px 12px rgba(102,126,234,.3); }
+    .smi-f { background:linear-gradient(135deg,#f6d365,#fda085); color:#fff; box-shadow:0 4px 12px rgba(246,211,101,.28); }
+    .smi-b { background:linear-gradient(135deg,#4facfe,#00f2fe); color:#fff; box-shadow:0 4px 12px rgba(79,172,254,.28); }
+    .smi-c { background:linear-gradient(135deg,#43e97b,#38f9d7); color:#fff; box-shadow:0 4px 12px rgba(67,233,123,.28); }
+    .stat-mini-val { font-size:1.45rem; font-weight:800; color:var(--text); line-height:1; }
+    .stat-mini-lbl { font-size:.68rem; color:var(--text-3); font-weight:600; text-transform:uppercase; letter-spacing:.05em; margin-top:4px; }
+
+    /* ── BW Progress ─────────────────────────────────────────── */
+    .bw-card {
+      background:var(--card); border:1px solid var(--card-border);
+      border-radius:20px; padding:22px 24px; margin-bottom:20px;
+    }
+    .bw-card-header {
+      display:flex; justify-content:space-between; align-items:center;
+      margin-bottom:14px; flex-wrap:wrap; gap:10px;
+    }
+    .bw-card-title { font-size:.92rem; font-weight:700; color:var(--text); display:flex; align-items:center; gap:8px; }
+    .bw-card-pct   { font-size:1.1rem; font-weight:800; color:var(--blue); }
+    .bw-bar-bg { height:9px; background:rgba(255,255,255,.1); border-radius:999px; overflow:hidden; margin-bottom:10px; }
+    [data-theme="light"] .bw-bar-bg { background:rgba(102,126,234,.13); }
+    .bw-bar-fill {
+      height:100%; border-radius:999px;
+      background:linear-gradient(90deg,#4facfe,#00f2fe);
+      transition:width 1s cubic-bezier(.4,0,.2,1);
+    }
+    .bw-bar-fill.warn { background:linear-gradient(90deg,#f6d365,#fda085); }
+    .bw-bar-fill.crit { background:linear-gradient(90deg,#ff6b6b,#ee0979); }
+    .bw-meta-row { display:flex; justify-content:space-between; font-size:.77rem; color:var(--text-3); flex-wrap:wrap; gap:6px; }
+    .bw-reset-info { display:flex; align-items:center; gap:6px; font-size:.75rem; color:var(--purple); font-weight:600; margin-top:8px; }
+
+    /* ── Files Table ─────────────────────────────────────────── */
+    .files-filters {
+      display:flex; flex-wrap:wrap; gap:10px; margin-bottom:18px; align-items:center;
+    }
+    .filter-select {
+      padding:8px 14px; border-radius:10px;
+      background:var(--input-bg); border:1px solid var(--input-border);
+      color:var(--text); font-family:'Poppins',sans-serif; font-size:.82rem;
+      outline:none; cursor:pointer; min-width:120px;
+      transition:border .2s;
+    }
+    .filter-select:focus { border-color:var(--input-focus); }
+
+    .files-grid {
+      display:grid;
+      grid-template-columns:repeat(auto-fill,minmax(260px,1fr));
+      gap:14px;
+    }
+    .file-card {
+      background:var(--card); border:1px solid var(--card-border);
+      border-radius:18px; overflow:hidden;
+      transition:transform .25s cubic-bezier(.34,1.56,.64,1), box-shadow .25s;
+    }
+    .file-card:hover { transform:translateY(-4px); box-shadow:var(--card-shadow); }
+    .file-card-thumb {
+      background:linear-gradient(135deg,rgba(102,126,234,.15),rgba(118,75,162,.15));
+      height:120px; display:flex; align-items:center; justify-content:center;
+      font-size:2.8rem; border-bottom:1px solid var(--card-border);
+      position:relative;
+    }
+    .file-card-type-badge {
+      position:absolute; top:8px; right:8px;
+      padding:3px 10px; border-radius:999px; font-size:.65rem; font-weight:700;
+    }
+    .fct-video  { background:rgba(102,126,234,.3); color:#a78bfa; }
+    .fct-audio  { background:rgba(67,233,123,.2);  color:#43e97b; }
+    .fct-image  { background:rgba(246,211,101,.2); color:#f6d365; }
+    .fct-doc    { background:rgba(79,172,254,.2);  color:#4facfe; }
+    .file-card-body { padding:14px 16px; }
+    .file-card-name {
+      font-size:.85rem; font-weight:700; color:var(--text);
+      white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+      margin-bottom:6px;
+    }
+    .file-card-meta { font-size:.72rem; color:var(--text-3); display:flex; gap:10px; flex-wrap:wrap; }
+    .file-card-actions {
+      display:flex; gap:8px; padding:10px 14px;
+      border-top:1px solid var(--divider);
+    }
+    .file-action-btn {
+      flex:1; padding:7px; border-radius:9px;
+      background:var(--btn-ghost); border:1px solid var(--btn-ghost-b);
+      color:var(--text-2); font-size:.75rem; font-weight:600;
+      cursor:pointer; display:flex; align-items:center; justify-content:center; gap:5px;
+      text-decoration:none; transition:all .2s;
+      font-family:'Poppins',sans-serif;
+    }
+    .file-action-btn:hover { background:var(--active); color:var(--accent); border-color:rgba(102,126,234,.4); }
+    .file-action-btn.primary {
+      background:linear-gradient(135deg,rgba(102,126,234,.25),rgba(118,75,162,.25));
+      color:var(--accent); border-color:rgba(102,126,234,.4);
+    }
+    .file-action-btn.primary:hover { background:linear-gradient(135deg,#667eea,#764ba2); color:#fff; }
+    .file-action-btn.dl { color:var(--green); }
+    .file-action-btn.dl:hover { background:rgba(67,233,123,.15); border-color:rgba(67,233,123,.4); }
+
+    /* ── Loading & Empty States ──────────────────────────────── */
+    .loading-spinner {
+      text-align:center; padding:64px 24px; color:var(--text-3);
+    }
+    .loading-spinner i { font-size:2.2rem; animation:spin 1s linear infinite; margin-bottom:14px; display:block; }
+    @keyframes spin { to { transform:rotate(360deg); } }
+    .empty-state {
+      text-align:center; padding:64px 24px; color:var(--text-3);
+    }
+    .empty-state i { font-size:3rem; margin-bottom:16px; display:block; opacity:.4; }
+    .empty-state p { font-size:.9rem; line-height:1.7; }
+
+    /* ── Pagination ──────────────────────────────────────────── */
+    .pagination {
+      display:flex; align-items:center; justify-content:center;
+      gap:8px; margin-top:24px; flex-wrap:wrap;
+    }
+    .page-btn {
+      width:36px; height:36px; border-radius:9px;
+      background:var(--btn-ghost); border:1px solid var(--btn-ghost-b);
+      color:var(--text-2); font-size:.82rem; cursor:pointer;
+      display:flex; align-items:center; justify-content:center;
+      transition:all .2s; font-family:'Poppins',sans-serif; font-weight:600;
+    }
+    .page-btn:hover { background:var(--active); color:var(--accent); border-color:rgba(102,126,234,.4); }
+    .page-btn.active { background:linear-gradient(135deg,#667eea,#764ba2); color:#fff; border-color:transparent; }
+    .page-btn:disabled { opacity:.4; cursor:not-allowed; }
+    .page-info { font-size:.78rem; color:var(--text-3); padding:0 8px; }
+
+    /* ── User Cards ──────────────────────────────────────────── */
+    .users-table {
+      background:var(--card); border:1px solid var(--card-border);
+      border-radius:18px; overflow:hidden;
+    }
+    .users-table-head {
+      display:grid;
+      grid-template-columns: 1fr 120px 110px 120px 100px;
+      padding:12px 20px;
+      border-bottom:1px solid var(--divider);
+      font-size:.72rem; font-weight:700; text-transform:uppercase;
+      letter-spacing:.06em; color:var(--text-3);
+    }
+    .users-table-row {
+      display:grid;
+      grid-template-columns: 1fr 120px 110px 120px 100px;
+      padding:14px 20px;
+      border-bottom:1px solid var(--divider);
+      transition:background .15s;
+      align-items:center;
+    }
+    .users-table-row:last-child { border-bottom:none; }
+    .users-table-row:hover { background:var(--hover); }
+    .user-info { display:flex; align-items:center; gap:10px; }
+    .user-avatar {
+      width:36px; height:36px; border-radius:50%;
+      background:linear-gradient(135deg,#667eea,#764ba2);
+      display:flex; align-items:center; justify-content:center;
+      font-size:.9rem; color:#fff; flex-shrink:0;
+      font-weight:700;
+    }
+    .user-name { font-size:.85rem; font-weight:700; color:var(--text); }
+    .user-id   { font-size:.72rem; color:var(--text-3); font-family:'JetBrains Mono',monospace; }
+
+    /* ── Badges ──────────────────────────────────────────────── */
+    .badge {
+      display:inline-flex; align-items:center; gap:5px;
+      padding:3px 10px; border-radius:999px;
+      font-size:.68rem; font-weight:700;
+    }
+    .badge::before { content:''; width:6px; height:6px; border-radius:50%; }
+    .badge-ok   { background:var(--badge-ok-bg);   color:var(--badge-ok-c); }
+    .badge-ok::before   { background:var(--badge-ok-c); box-shadow:0 0 5px var(--badge-ok-c); }
+    .badge-warn { background:var(--badge-warn-bg);  color:var(--badge-warn-c); }
+    .badge-warn::before { background:var(--badge-warn-c); }
+    .badge-err  { background:var(--badge-err-bg);   color:var(--badge-err-c); }
+    .badge-err::before  { background:var(--badge-err-c); }
+    .badge-blue { background:var(--badge-blue-bg);  color:var(--badge-blue-c); }
+    .badge-blue::before { background:var(--badge-blue-c); }
+
+    /* ── Toast ───────────────────────────────────────────────── */
+    .toast-wrap {
+      position:fixed; bottom:24px; left:50%; transform:translateX(-50%);
+      z-index:9999; display:flex; flex-direction:column; align-items:center; gap:8px;
+      pointer-events:none;
+    }
+    .toast {
+      background:rgba(15,12,41,.96); border:1px solid rgba(102,126,234,.3);
+      border-radius:12px; padding:10px 20px;
+      font-size:.82rem; font-weight:600; color:#fff;
+      backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+      box-shadow:0 8px 24px rgba(0,0,0,.3);
+      animation:toastIn .3s ease both;
+      display:flex; align-items:center; gap:8px;
+      pointer-events:auto;
+    }
+    [data-theme="light"] .toast { background:rgba(255,255,255,.97); color:#1a1a2e; border-color:rgba(102,126,234,.22); }
+    @keyframes toastIn { from{opacity:0;transform:translateY(14px);} to{opacity:1;transform:translateY(0);} }
+    .toast.out { animation:toastOut .3s ease forwards; }
+    @keyframes toastOut { to{opacity:0;transform:translateY(8px);} }
+
+    /* ── Inline Player (mini inline) ─────────────────────────── */
+    .inline-player-card {
+      background:var(--card); border:1px solid var(--card-border);
+      border-radius:18px; overflow:hidden; margin-bottom:20px;
+    }
+    .inline-player-card video,
+    .inline-player-card audio {
+      width:100%; display:block; background:#000;
+      max-height:400px; object-fit:contain;
+    }
+    .inline-player-card audio { background:var(--card); padding:10px; }
+    .inline-player-info {
+      padding:14px 18px; display:flex; align-items:center; gap:14px;
+      border-top:1px solid var(--divider); flex-wrap:wrap;
+    }
+    .inline-player-close {
+      margin-left:auto; background:var(--btn-ghost); border:1px solid var(--btn-ghost-b);
+      color:var(--text-2); padding:7px 14px; border-radius:8px;
+      font-size:.78rem; cursor:pointer; font-family:'Poppins',sans-serif; font-weight:600;
+      display:flex; align-items:center; gap:6px; transition:all .2s;
+    }
+    .inline-player-close:hover { background:rgba(248,113,113,.15); color:#f87171; border-color:rgba(248,113,113,.3); }
+
+    /* ── Responsive ──────────────────────────────────────────── */
+    @media (max-width: 768px) {
+      .sidebar { display:none; }
+      .sidebar.open {
+        display:block; position:fixed; left:0; top:62px;
+        height:calc(100vh - 62px); z-index:150;
+        box-shadow:4px 0 20px rgba(0,0,0,.3);
+      }
+      .content { padding:16px; }
+      .files-grid { grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); }
+      .users-table-head, .users-table-row { grid-template-columns:1fr 90px 80px; }
+      .users-table-head > *:nth-child(4),
+      .users-table-head > *:nth-child(5),
+      .users-table-row  > *:nth-child(4),
+      .users-table-row  > *:nth-child(5) { display:none; }
+      .topnav-search { display:none; }
+    }
+    @media (max-width: 480px) {
+      .stats-row { grid-template-columns:repeat(2,1fr); }
+      .files-grid { grid-template-columns:1fr; }
+    }
+  </style>
+</head>
+<body>
+  <!-- Particles -->
+  <div class="bg-particles">
+    <span></span><span></span><span></span><span></span><span></span><span></span>
+  </div>
+
+  <!-- Toast container -->
+  <div class="toast-wrap" id="toast-wrap"></div>
+
+  <!-- App Shell -->
+  <div class="app-shell">
+
+    <!-- ── Top Nav ──────────────────────────────────────────── -->
+    <nav class="topnav">
+      <button class="topnav-btn" id="sidebar-toggle" onclick="toggleSidebar()" style="display:none" title="Menu">
+        <i class="fa-solid fa-bars"></i>
+      </button>
+      <a href="/" class="topnav-brand">
+        <div class="topnav-brand-icon"><i class="fa-solid fa-cloud-arrow-up"></i></div>
+        {{ bot_name }}
+      </a>
+      <div class="topnav-search">
+        <i class="fa-solid fa-magnifying-glass"></i>
+        <input type="text" id="search-input" placeholder="Search files…" oninput="onSearch(this.value)">
+      </div>
+      <div class="topnav-actions">
+        <a href="https://t.me/{{ bot_username }}" target="_blank" class="topnav-btn" title="Open in Telegram">
+          <i class="fa-brands fa-telegram"></i>
+        </a>
+        <a href="/bot_settings" class="topnav-btn" title="Bot Settings">
+          <i class="fa-solid fa-gear"></i>
+        </a>
+        <button class="topnav-btn" onclick="toggleTheme()" title="Toggle Theme" id="theme-toggle-btn">
+          <i class="fa-solid fa-moon" id="theme-icon"></i>
+        </button>
+      </div>
+    </nav>
+
+    <div class="main-layout">
+      <!-- ── Sidebar ──────────────────────────────────────── -->
+      <aside class="sidebar" id="sidebar">
+        <div class="sidebar-section">
+          <div class="sidebar-label">Navigation</div>
+          <a class="sidebar-item active" onclick="showPage('dashboard')" href="#dashboard">
+            <i class="fa-solid fa-house"></i> Dashboard
+          </a>
+          <a class="sidebar-item" onclick="showPage('files')" href="#files">
+            <i class="fa-solid fa-folder-open"></i> Files
+            <span class="sidebar-badge" id="sb-files-count">—</span>
+          </a>
+          <a class="sidebar-item" onclick="showPage('bandwidth')" href="#bandwidth">
+            <i class="fa-solid fa-satellite-dish"></i> Bandwidth
+          </a>
+          <a class="sidebar-item" onclick="showPage('users')" href="#users">
+            <i class="fa-solid fa-users"></i> Users
+            <span class="sidebar-badge" id="sb-users-count">—</span>
+          </a>
+        </div>
+        <div class="sidebar-section">
+          <div class="sidebar-label">Quick Links</div>
+          <a class="sidebar-item" href="/bot_settings">
+            <i class="fa-solid fa-sliders"></i> Bot Settings
+          </a>
+          <a class="sidebar-item" href="https://t.me/{{ bot_username }}" target="_blank">
+            <i class="fa-brands fa-telegram"></i> Telegram Bot
+          </a>
+          <a class="sidebar-item" href="/">
+            <i class="fa-solid fa-globe"></i> Home Page
+          </a>
+        </div>
+      </aside>
+
+      <!-- ── Content ──────────────────────────────────────── -->
+      <main class="content">
+
+        <!-- ── Dashboard Page ─────────────────────────────── -->
+        <div class="page active" id="page-dashboard">
+          <div class="page-header">
+            <div class="page-header-icon phi-dash"><i class="fa-solid fa-chart-pie"></i></div>
+            <div class="page-header-text">
+              <h2>Dashboard</h2>
+              <p>Overview of bot activity and resources</p>
+            </div>
+          </div>
+
+          <div class="stats-row" id="dash-stats">
+            <div class="stat-mini">
+              <div class="stat-mini-icon smi-u"><i class="fa-solid fa-users"></i></div>
+              <div class="stat-mini-val" id="d-users">—</div>
+              <div class="stat-mini-lbl">Total Users</div>
+            </div>
+            <div class="stat-mini">
+              <div class="stat-mini-icon smi-f"><i class="fa-solid fa-folder-open"></i></div>
+              <div class="stat-mini-val" id="d-files">—</div>
+              <div class="stat-mini-lbl">Total Files</div>
+            </div>
+            <div class="stat-mini">
+              <div class="stat-mini-icon smi-b"><i class="fa-solid fa-satellite-dish"></i></div>
+              <div class="stat-mini-val" id="d-bw-used">—</div>
+              <div class="stat-mini-lbl">BW Used</div>
+            </div>
+            <div class="stat-mini">
+              <div class="stat-mini-icon smi-c"><i class="fa-solid fa-tower-broadcast"></i></div>
+              <div class="stat-mini-val" id="d-conns">—</div>
+              <div class="stat-mini-lbl">Live Sessions</div>
+            </div>
+          </div>
+
+          <!-- Bandwidth Card -->
+          <div class="bw-card">
+            <div class="bw-card-header">
+              <div class="bw-card-title"><i class="fa-solid fa-gauge-high" style="color:var(--blue)"></i> Bandwidth Usage</div>
+              <div class="bw-card-pct" id="d-bw-pct">0%</div>
+            </div>
+            <div class="bw-bar-bg">
+              <div class="bw-bar-fill" id="d-bw-bar" style="width:0%"></div>
+            </div>
+            <div class="bw-meta-row">
+              <span id="d-bw-meta-used">Used: —</span>
+              <span id="d-bw-meta-rem">Remaining: —</span>
+              <span id="d-bw-meta-limit">Limit: —</span>
+            </div>
+            <div class="bw-reset-info">
+              <i class="fa-solid fa-clock-rotate-left"></i>
+              Resets in: <strong id="d-bw-reset">—</strong>
+              <span id="d-countdown-timer" style="font-family:'JetBrains Mono',monospace;font-size:.72rem;color:var(--text-3);margin-left:6px;"></span>
+            </div>
+          </div>
+
+          <!-- Recent Files preview -->
+          <div class="page-header" style="margin-bottom:14px;">
+            <div style="flex:1">
+              <h3 style="font-size:1rem;font-weight:700;color:var(--text);">Recent Files</h3>
+              <p style="font-size:.78rem;color:var(--text-2);margin-top:2px;">Latest uploads</p>
+            </div>
+            <button class="file-action-btn" onclick="showPage('files')" style="width:auto;padding:8px 16px">
+              <i class="fa-solid fa-arrow-right"></i> View All
+            </button>
+          </div>
+          <div id="recent-files" class="files-grid">
+            <div class="loading-spinner"><i class="fa-solid fa-spinner"></i><p>Loading files…</p></div>
+          </div>
+        </div>
+
+        <!-- ── Files Page ──────────────────────────────────── -->
+        <div class="page" id="page-files">
+          <div class="page-header">
+            <div class="page-header-icon phi-files"><i class="fa-solid fa-folder-open"></i></div>
+            <div class="page-header-text">
+              <h2>Files</h2>
+              <p id="files-subtitle">Browse, stream and download all files</p>
+            </div>
+          </div>
+
+          <!-- Inline player (hidden by default) -->
+          <div id="inline-player-wrap" style="display:none">
+            <div class="inline-player-card">
+              <div id="inline-player-el"></div>
+              <div class="inline-player-info">
+                <div style="flex:1">
+                  <div style="font-size:.85rem;font-weight:700;color:var(--text);" id="inline-player-name">—</div>
+                  <div style="font-size:.72rem;color:var(--text-3);margin-top:2px;" id="inline-player-size">—</div>
+                </div>
+                <button class="inline-player-close" onclick="closeInlinePlayer()">
+                  <i class="fa-solid fa-xmark"></i> Close
+                </button>
+                <a id="inline-player-dl" href="#" class="file-action-btn dl" style="width:auto;padding:7px 14px;">
+                  <i class="fa-solid fa-download"></i> Download
+                </a>
+              </div>
+            </div>
+          </div>
+
+          <div class="files-filters">
+            <select class="filter-select" id="filter-type" onchange="loadFiles(1)">
+              <option value="">All Types</option>
+              <option value="video">🎬 Video</option>
+              <option value="audio">🎵 Audio</option>
+              <option value="image">🖼️ Image</option>
+              <option value="document">📄 Document</option>
+            </select>
+            <select class="filter-select" id="filter-limit" onchange="loadFiles(1)">
+              <option value="20">20 per page</option>
+              <option value="40">40 per page</option>
+              <option value="60">60 per page</option>
+            </select>
+            <button class="file-action-btn" onclick="loadFiles(currentFilesPage)" style="width:auto;padding:8px 14px;">
+              <i class="fa-solid fa-rotate-right"></i> Refresh
+            </button>
+          </div>
+
+          <div id="files-grid" class="files-grid">
+            <div class="loading-spinner"><i class="fa-solid fa-spinner"></i><p>Loading files…</p></div>
+          </div>
+          <div class="pagination" id="files-pagination"></div>
+        </div>
+
+        <!-- ── Bandwidth Page ──────────────────────────────── -->
+        <div class="page" id="page-bandwidth">
+          <div class="page-header">
+            <div class="page-header-icon phi-bw"><i class="fa-solid fa-satellite-dish"></i></div>
+            <div class="page-header-text">
+              <h2>Bandwidth</h2>
+              <p>Global usage, reset countdown & per-user quota</p>
+            </div>
+          </div>
+
+          <div class="bw-card" style="margin-bottom:20px;">
+            <div class="bw-card-header">
+              <div class="bw-card-title"><i class="fa-solid fa-globe" style="color:var(--blue)"></i> Global Bandwidth</div>
+              <span class="badge badge-ok" id="bw-mode-badge">Active</span>
+            </div>
+            <div class="bw-bar-bg">
+              <div class="bw-bar-fill" id="bw-page-bar" style="width:0%"></div>
+            </div>
+            <div class="bw-meta-row" style="margin-top:8px;">
+              <span><strong id="bw-pg-used">—</strong> used</span>
+              <span><strong id="bw-pg-today">—</strong> today</span>
+              <span>Limit: <strong id="bw-pg-limit">—</strong></span>
+              <span>Remaining: <strong id="bw-pg-rem">—</strong></span>
+            </div>
+            <div class="bw-reset-info" style="margin-top:12px;">
+              <i class="fa-solid fa-rotate"></i>
+              <div>
+                Next Reset In:
+                <span class="bw-reset-countdown" id="bw-pg-countdown-wrap">
+                  <strong id="bw-pg-days">0</strong>d
+                  <strong id="bw-pg-hours">0</strong>h
+                  <strong id="bw-pg-minutes">0</strong>m
+                  <strong id="bw-pg-seconds">00</strong>s
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div class="page-header" style="margin-bottom:14px;">
+            <div>
+              <h3 style="font-size:1rem;font-weight:700;color:var(--text);">Per-User Bandwidth</h3>
+              <p style="font-size:.78rem;color:var(--text-2);">Top bandwidth consumers</p>
+            </div>
+            <button class="file-action-btn" onclick="loadUsersBandwidth()" style="width:auto;padding:8px 14px;">
+              <i class="fa-solid fa-rotate-right"></i> Refresh
+            </button>
+          </div>
+
+          <div class="users-table" id="bw-users-table">
+            <div class="users-table-head">
+              <span>User</span>
+              <span>BW Used</span>
+              <span>Limit</span>
+              <span>Reset In</span>
+              <span>Status</span>
+            </div>
+            <div class="loading-spinner" id="bw-users-loading">
+              <i class="fa-solid fa-spinner"></i><p>Loading…</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── Users Page ──────────────────────────────────── -->
+        <div class="page" id="page-users">
+          <div class="page-header">
+            <div class="page-header-icon phi-users"><i class="fa-solid fa-users"></i></div>
+            <div class="page-header-text">
+              <h2>Users</h2>
+              <p>Manage users, limits, and access</p>
+            </div>
+          </div>
+
+          <div class="files-filters">
+            <select class="filter-select" id="users-filter-status" onchange="loadUsers(1)">
+              <option value="">All Users</option>
+              <option value="blocked">Blocked Only</option>
+              <option value="active">Active Only</option>
+            </select>
+            <button class="file-action-btn" onclick="loadUsers(currentUsersPage)" style="width:auto;padding:8px 14px;">
+              <i class="fa-solid fa-rotate-right"></i> Refresh
+            </button>
+          </div>
+
+          <div class="users-table">
+            <div class="users-table-head">
+              <span>User</span>
+              <span>BW Used</span>
+              <span>Files</span>
+              <span>Last Active</span>
+              <span>Status</span>
+            </div>
+            <div id="users-rows">
+              <div class="loading-spinner"><i class="fa-solid fa-spinner"></i><p>Loading users…</p></div>
+            </div>
+          </div>
+          <div class="pagination" id="users-pagination"></div>
+        </div>
+
+      </main>
+    </div><!-- /main-layout -->
+  </div><!-- /app-shell -->
+
+  <script>
+  // ── Theme ─────────────────────────────────────────────────────────────────
+  (function() {
+    const t = localStorage.getItem('flix-theme') || 'dark';
+    document.documentElement.setAttribute('data-theme', t);
+    updateThemeIcon(t);
+  })();
+
+  function updateThemeIcon(t) {
+    const i = document.getElementById('theme-icon');
+    if (i) i.className = t === 'dark' ? 'fa-solid fa-moon' : 'fa-solid fa-sun';
+  }
+
+  function toggleTheme() {
+    const html = document.documentElement;
+    const cur  = html.getAttribute('data-theme') || 'dark';
+    const next = cur === 'dark' ? 'light' : 'dark';
+    html.setAttribute('data-theme', next);
+    localStorage.setItem('flix-theme', next);
+    updateThemeIcon(next);
+  }
+
+  // ── Sidebar ───────────────────────────────────────────────────────────────
+  const sidebarToggle = document.getElementById('sidebar-toggle');
+  if (window.innerWidth <= 768) sidebarToggle.style.display = 'flex';
+  window.addEventListener('resize', () => {
+    sidebarToggle.style.display = window.innerWidth <= 768 ? 'flex' : 'none';
+  });
+
+  function toggleSidebar() {
+    document.getElementById('sidebar').classList.toggle('open');
+  }
+
+  // ── Toast ─────────────────────────────────────────────────────────────────
+  function showToast(msg, icon = 'fa-circle-check', dur = 3000) {
+    const wrap = document.getElementById('toast-wrap');
+    const el   = document.createElement('div');
+    el.className = 'toast';
+    el.innerHTML = `<i class="fa-solid ${icon}"></i>${msg}`;
+    wrap.appendChild(el);
+    setTimeout(() => {
+      el.classList.add('out');
+      setTimeout(() => el.remove(), 350);
+    }, dur);
+  }
+
+  // ── Page Navigation ───────────────────────────────────────────────────────
+  function showPage(name) {
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
+    document.getElementById('page-' + name).classList.add('active');
+    const sb = document.querySelector(`.sidebar-item[onclick*="${name}"]`);
+    if (sb) sb.classList.add('active');
+    window.location.hash = name;
+    if (window.innerWidth <= 768) document.getElementById('sidebar').classList.remove('open');
+
+    // Load data lazily
+    if (name === 'files')     loadFiles(1);
+    if (name === 'bandwidth') { loadBandwidthPage(); loadUsersBandwidth(); }
+    if (name === 'users')     loadUsers(1);
+  }
+
+  // Load page from hash
+  (function() {
+    const h = (window.location.hash || '#dashboard').replace('#','');
+    const valid = ['dashboard','files','bandwidth','users'];
+    if (valid.includes(h)) showPage(h);
+  })();
+
+  // ── State ─────────────────────────────────────────────────────────────────
+  let currentFilesPage = 1;
+  let currentUsersPage = 1;
+  let searchQuery = '';
+  let _bwResetEpoch = 0;
+  let _bwCountdownTimer = null;
+
+  // ── Bandwidth Countdown ────────────────────────────────────────────────────
+  function startCountdown(epoch) {
+    _bwResetEpoch = epoch;
+    if (_bwCountdownTimer) clearInterval(_bwCountdownTimer);
+    _bwCountdownTimer = setInterval(tickCountdown, 1000);
+    tickCountdown();
+  }
+
+  function tickCountdown() {
+    if (!_bwResetEpoch) return;
+    const now  = Math.floor(Date.now() / 1000);
+    const rem  = Math.max(0, _bwResetEpoch - now);
+    const d    = Math.floor(rem / 86400);
+    const h    = Math.floor((rem % 86400) / 3600);
+    const m    = Math.floor((rem % 3600) / 60);
+    const s    = rem % 60;
+
+    // Dashboard mini
+    const dct = document.getElementById('d-countdown-timer');
+    if (dct) dct.textContent = `${d}d ${h}h ${m}m ${String(s).padStart(2,'0')}s`;
+
+    // Full reset display (dashboard)
+    const dr = document.getElementById('d-bw-reset');
+    if (dr) dr.textContent = d > 0 ? `${d}d ${h}h ${m}m` : h > 0 ? `${h}h ${m}m` : `${m}m ${s}s`;
+
+    // Bandwidth page countdown
+    const setEl = (id, v) => { const el = document.getElementById(id); if(el) el.textContent = String(v).padStart(2,'0'); };
+    setEl('bw-pg-days',    d);
+    setEl('bw-pg-hours',   h);
+    setEl('bw-pg-minutes', m);
+    setEl('bw-pg-seconds', s);
+  }
+
+  // ── Dashboard Data ────────────────────────────────────────────────────────
+  async function loadDashboard() {
+    try {
+      const [statsR, bwR, healthR] = await Promise.all([
+        fetch('/api/stats'),
+        fetch('/api/bandwidth'),
+        fetch('/api/health'),
+      ]);
+      const stats  = await statsR.json();
+      const bw     = await bwR.json();
+      const health = await healthR.json();
+
+      document.getElementById('d-users').textContent   = stats.total_users  ?? '—';
+      document.getElementById('d-files').textContent   = stats.total_files  ?? '—';
+      document.getElementById('d-bw-used').textContent = (bw.formatted || {}).total_bandwidth ?? '—';
+      document.getElementById('d-conns').textContent   = health.active_conns ?? 0;
+
+      // BW bar
+      const pct = bw.percentage ?? 0;
+      document.getElementById('d-bw-pct').textContent  = pct + '%';
+      const bar = document.getElementById('d-bw-bar');
+      bar.style.width = pct + '%';
+      bar.className   = 'bw-bar-fill' + (pct > 90 ? ' crit' : pct > 70 ? ' warn' : '');
+      document.getElementById('d-bw-meta-used').textContent = 'Used: ' + ((bw.formatted||{}).total_bandwidth||'—');
+      document.getElementById('d-bw-meta-rem').textContent  = 'Remaining: ' + ((bw.formatted||{}).remaining||'—');
+      document.getElementById('d-bw-meta-limit').textContent= 'Limit: ' + ((bw.formatted||{}).limit||'—');
+
+      // Countdown
+      if (bw.next_reset_epoch) startCountdown(bw.next_reset_epoch);
+
+      // Sidebar counts
+      document.getElementById('sb-files-count').textContent = stats.total_files || 0;
+      document.getElementById('sb-users-count').textContent = stats.total_users || 0;
+    } catch(e) { console.warn('dashboard load error:', e); }
+  }
+
+  // ── Load Recent Files (dashboard) ─────────────────────────────────────────
+  async function loadRecentFiles() {
+    const wrap = document.getElementById('recent-files');
+    wrap.innerHTML = '<div class="loading-spinner"><i class="fa-solid fa-spinner"></i><p>Loading…</p></div>';
+    try {
+      const r = await fetch('/api/files?limit=6');
+      const d = await r.json();
+      if (!d.files || d.files.length === 0) {
+        wrap.innerHTML = '<div class="empty-state"><i class="fa-solid fa-folder-open"></i><p>No files yet.</p></div>';
+        return;
+      }
+      wrap.innerHTML = d.files.map(f => renderFileCard(f)).join('');
+    } catch(e) {
+      wrap.innerHTML = '<div class="empty-state"><i class="fa-solid fa-circle-exclamation"></i><p>Failed to load files.</p></div>';
+    }
+  }
+
+  // ── Files Page ────────────────────────────────────────────────────────────
+  async function loadFiles(page = 1) {
+    currentFilesPage = page;
+    const grid = document.getElementById('files-grid');
+    grid.innerHTML = '<div class="loading-spinner"><i class="fa-solid fa-spinner"></i><p>Loading files…</p></div>';
+
+    const type  = document.getElementById('filter-type')?.value || '';
+    const limit = document.getElementById('filter-limit')?.value || '20';
+    let url = `/api/files?page=${page}&limit=${limit}`;
+    if (type)        url += `&type=${type}`;
+    if (searchQuery) url += `&search=${encodeURIComponent(searchQuery)}`;
+
+    try {
+      const r = await fetch(url);
+      const d = await r.json();
+      const sub = document.getElementById('files-subtitle');
+      if (sub) sub.textContent = `${d.total || 0} files · page ${page} of ${d.pages || 1}`;
+
+      if (!d.files || d.files.length === 0) {
+        grid.innerHTML = '<div class="empty-state"><i class="fa-solid fa-folder-open"></i><p>No files found. Upload files via the Telegram bot.</p></div>';
+        document.getElementById('files-pagination').innerHTML = '';
+        return;
+      }
+
+      grid.innerHTML = d.files.map(f => renderFileCard(f)).join('');
+      renderPagination('files-pagination', page, d.pages, 'loadFiles');
+    } catch(e) {
+      grid.innerHTML = '<div class="empty-state"><i class="fa-solid fa-circle-exclamation"></i><p>Failed to load files.</p></div>';
+    }
+  }
+
+  function renderFileCard(f) {
+    const icons = { video:'🎬', audio:'🎵', image:'🖼️', document:'📄' };
+    const icon  = icons[f.file_type] || '📄';
+    const typeClass = {video:'fct-video', audio:'fct-audio', image:'fct-image', document:'fct-doc'}[f.file_type] || 'fct-doc';
+    const date  = f.created_at ? new Date(f.created_at).toLocaleDateString() : '—';
+    const streamBtn = f.is_streamable
+      ? `<a href="/stream/${f.file_id}" class="file-action-btn primary" title="Stream"><i class="fa-solid fa-play"></i> Stream</a>`
+      : '';
+    const inlineBtn = f.is_streamable
+      ? `<button class="file-action-btn" onclick='openInlinePlayer(${JSON.stringify(f)})' title="Play here"><i class="fa-solid fa-circle-play"></i> Play</button>`
+      : '';
+    return `
+      <div class="file-card">
+        <div class="file-card-thumb">
+          ${icon}
+          <span class="file-card-type-badge ${typeClass}">${f.file_type}</span>
+        </div>
+        <div class="file-card-body">
+          <div class="file-card-name" title="${esc(f.file_name)}">${esc(f.file_name)}</div>
+          <div class="file-card-meta">
+            <span>${f.file_size_fmt || '—'}</span>
+            <span>${date}</span>
+          </div>
+        </div>
+        <div class="file-card-actions">
+          ${streamBtn}
+          ${inlineBtn}
+          <a href="${f.download_url}" class="file-action-btn dl" title="Download">
+            <i class="fa-solid fa-download"></i> DL
+          </a>
+          <button class="file-action-btn" onclick="copyLink('${f.stream_url || f.download_url}')" title="Copy link">
+            <i class="fa-solid fa-link"></i>
+          </button>
+        </div>
+      </div>`;
+  }
+
+  function esc(s) {
+    return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function copyLink(url) {
+    navigator.clipboard?.writeText(url).then(() => showToast('Link copied!', 'fa-link')).catch(() => {});
+  }
+
+  // ── Inline Player ─────────────────────────────────────────────────────────
+  function openInlinePlayer(f) {
+    const wrap   = document.getElementById('inline-player-wrap');
+    const elWrap = document.getElementById('inline-player-el');
+    const nameEl = document.getElementById('inline-player-name');
+    const sizeEl = document.getElementById('inline-player-size');
+    const dlBtn  = document.getElementById('inline-player-dl');
+
+    const isVideo = f.file_type === 'video';
+    const isAudio = f.file_type === 'audio';
+
+    if (isVideo) {
+      elWrap.innerHTML = `<video src="${f.stream_url}" controls autoplay preload="metadata"
+        style="width:100%;max-height:400px;object-fit:contain;background:#000;border-radius:0;" controlsList="nodownload"></video>`;
+    } else if (isAudio) {
+      elWrap.innerHTML = `<audio src="${f.stream_url}" controls autoplay style="width:100%;padding:16px;"></audio>`;
+    } else {
+      return;
+    }
+
+    nameEl.textContent = f.file_name;
+    sizeEl.textContent = f.file_size_fmt || '';
+    dlBtn.href         = f.download_url;
+
+    wrap.style.display = 'block';
+    wrap.scrollIntoView({ behavior:'smooth', block:'start' });
+  }
+
+  function closeInlinePlayer() {
+    const wrap   = document.getElementById('inline-player-wrap');
+    const elWrap = document.getElementById('inline-player-el');
+    elWrap.innerHTML = '';
+    wrap.style.display = 'none';
+  }
+
+  // ── Search ────────────────────────────────────────────────────────────────
+  let _searchTimer = null;
+  function onSearch(val) {
+    searchQuery = val.trim();
+    clearTimeout(_searchTimer);
+    _searchTimer = setTimeout(() => {
+      const active = document.querySelector('.page.active');
+      if (active && active.id === 'page-files') loadFiles(1);
+      if (active && active.id === 'page-dashboard') loadRecentFiles();
+    }, 380);
+  }
+
+  // ── Bandwidth Page ────────────────────────────────────────────────────────
+  async function loadBandwidthPage() {
+    try {
+      const r  = await fetch('/api/bandwidth');
+      const d  = await r.json();
+      const f  = d.formatted || {};
+      const pct = d.percentage || 0;
+
+      document.getElementById('bw-pg-used').textContent  = f.total_bandwidth || '—';
+      document.getElementById('bw-pg-today').textContent = f.today_bandwidth  || '—';
+      document.getElementById('bw-pg-limit').textContent = f.limit            || '—';
+      document.getElementById('bw-pg-rem').textContent   = f.remaining        || '—';
+
+      const bar = document.getElementById('bw-page-bar');
+      bar.style.width = pct + '%';
+      bar.className   = 'bw-bar-fill' + (pct > 90 ? ' crit' : pct > 70 ? ' warn' : '');
+
+      const badge = document.getElementById('bw-mode-badge');
+      if (badge) {
+        badge.className  = 'badge ' + (d.bandwidth_mode ? 'badge-ok' : 'badge-err');
+        badge.textContent = d.bandwidth_mode ? 'Active' : 'Inactive';
+      }
+
+      if (d.next_reset_epoch) startCountdown(d.next_reset_epoch);
+    } catch(e) { console.warn('bw page load error:', e); }
+  }
+
+  async function loadUsersBandwidth() {
+    const wrap = document.getElementById('bw-users-table');
+    const head = wrap.querySelector('.users-table-head');
+    const loading = document.getElementById('bw-users-loading');
+    if (loading) loading.style.display = 'block';
+
+    try {
+      const [usersR] = await Promise.all([fetch('/api/users?limit=50')]);
+      const users = await usersR.json();
+
+      // Remove old rows
+      wrap.querySelectorAll('.users-table-row').forEach(r => r.remove());
+      if (loading) loading.style.display = 'none';
+
+      if (!users.users || users.users.length === 0) {
+        const row = document.createElement('div');
+        row.innerHTML = '<div class="empty-state" style="padding:32px"><i class="fa-solid fa-users"></i><p>No users found.</p></div>';
+        wrap.appendChild(row);
+        return;
+      }
+
+      for (const u of users.users) {
+        const bwR = await fetch(`/api/bandwidth/user/${u.user_id}`);
+        const bw  = await bwR.json();
+        const pct = bw.percentage || 0;
+        const row = document.createElement('div');
+        row.className = 'users-table-row';
+        row.innerHTML = `
+          <div class="user-info">
+            <div class="user-avatar">${(u.first_name||u.username||'?')[0].toUpperCase()}</div>
+            <div><div class="user-name">${esc(u.first_name||u.username||'Unknown')}</div>
+                 <div class="user-id">${u.user_id}</div></div>
+          </div>
+          <span>${(bw.formatted||{}).used||'—'}${bw.limit ? ` / ${(bw.formatted||{}).limit}` : ''}</span>
+          <span>${bw.limit ? (pct+'%') : 'No limit'}</span>
+          <span style="font-size:.75rem;">${bw.reset_in||'—'}</span>
+          <span><span class="badge ${u.blocked ? 'badge-err' : 'badge-ok'}">${u.blocked ? 'Blocked' : 'Active'}</span></span>`;
+        wrap.appendChild(row);
+      }
+    } catch(e) {
+      if (loading) loading.style.display = 'none';
+      console.warn('user bw load error:', e);
+    }
+  }
+
+  // ── Users Page ────────────────────────────────────────────────────────────
+  async function loadUsers(page = 1) {
+    currentUsersPage = page;
+    const wrap  = document.getElementById('users-rows');
+    wrap.innerHTML = '<div class="loading-spinner"><i class="fa-solid fa-spinner"></i><p>Loading users…</p></div>';
+
+    try {
+      const status = document.getElementById('users-filter-status')?.value || '';
+      const r = await fetch(`/api/users?page=${page}&limit=20`);
+      const d = await r.json();
+      let users = d.users || [];
+
+      if (status === 'blocked') users = users.filter(u => u.blocked);
+      if (status === 'active')  users = users.filter(u => !u.blocked);
+
+      if (users.length === 0) {
+        wrap.innerHTML = '<div class="empty-state" style="padding:32px"><i class="fa-solid fa-users"></i><p>No users found.</p></div>';
+        document.getElementById('users-pagination').innerHTML = '';
+        return;
+      }
+
+      wrap.innerHTML = users.map(u => {
+        const lastActivity = u.last_activity ? new Date(u.last_activity).toLocaleDateString() : '—';
+        const firstUsed    = u.first_used    ? new Date(u.first_used).toLocaleDateString()    : '—';
+        return `<div class="users-table-row">
+          <div class="user-info">
+            <div class="user-avatar">${(u.first_name||u.username||'?')[0].toUpperCase()}</div>
+            <div>
+              <div class="user-name">${esc(u.first_name||u.username||'Unknown')}</div>
+              <div class="user-id">ID: ${u.user_id}</div>
+            </div>
+          </div>
+          <span style="font-size:.78rem;color:var(--text-2);">${u.max_bandwidth ? _fmtBytes(u.max_bandwidth)+' limit' : 'Unlimited'}</span>
+          <span style="font-size:.78rem;color:var(--text-2);">${u.max_files || 'Unlimited'}</span>
+          <span style="font-size:.72rem;color:var(--text-3);">${lastActivity}</span>
+          <span><span class="badge ${u.blocked ? 'badge-err' : 'badge-ok'}">${u.blocked ? 'Blocked' : 'Active'}</span></span>
+        </div>`;
+      }).join('');
+
+      renderPagination('users-pagination', page, d.pages, 'loadUsers');
+    } catch(e) {
+      wrap.innerHTML = '<div class="empty-state"><i class="fa-solid fa-circle-exclamation"></i><p>Failed to load users.</p></div>';
+    }
+  }
+
+  function _fmtBytes(n) {
+    if (!n) return '0 B';
+    const u = ['B','KB','MB','GB','TB'];
+    let i = 0; n = parseFloat(n);
+    while (n >= 1024 && i < u.length-1) { n/=1024; i++; }
+    return n.toFixed(1)+' '+u[i];
+  }
+
+  // ── Pagination ────────────────────────────────────────────────────────────
+  function renderPagination(id, cur, total, fn) {
+    const wrap = document.getElementById(id);
+    if (!wrap || total <= 1) { if(wrap) wrap.innerHTML=''; return; }
+    let html = `<button class="page-btn" onclick="${fn}(${Math.max(1,cur-1)})" ${cur<=1?'disabled':''}><i class="fa-solid fa-chevron-left"></i></button>`;
+    const range = [];
+    for (let i = Math.max(1,cur-2); i <= Math.min(total,cur+2); i++) range.push(i);
+    if (range[0] > 1) html += `<button class="page-btn" onclick="${fn}(1)">1</button>${range[0]>2?'<span class="page-info">…</span>':''}`;
+    range.forEach(p => {
+      html += `<button class="page-btn${p===cur?' active':''}" onclick="${fn}(${p})">${p}</button>`;
+    });
+    if (range[range.length-1] < total) {
+      html += `${range[range.length-1]<total-1?'<span class="page-info">…</span>':''}<button class="page-btn" onclick="${fn}(${total})">${total}</button>`;
+    }
+    html += `<button class="page-btn" onclick="${fn}(${Math.min(total,cur+1)})" ${cur>=total?'disabled':''}><i class="fa-solid fa-chevron-right"></i></button>`;
+    html += `<span class="page-info">${cur} / ${total}</span>`;
+    wrap.innerHTML = html;
+  }
+
+  // ── Init ──────────────────────────────────────────────────────────────────
+  loadDashboard();
+  loadRecentFiles();
+  setInterval(loadDashboard, 30000);
+  </script>
+</body>
+</html>

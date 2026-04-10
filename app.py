@@ -12,7 +12,7 @@ import jinja2
 from bot import Bot
 from config import Config
 from database import Database
-from helper import StreamingService, check_bandwidth_limit, format_size
+from helper import StreamingService, check_bandwidth_limit, check_user_access, format_size
 from helper.stream import (
     get_active_session_count,
     _register_session,
@@ -131,9 +131,17 @@ def build_app(bot: Bot, database) -> web.Application:
             )
             raise web.HTTPNotFound(reason="File no longer available on Telegram")
 
+        # Check global bandwidth limit
         allowed, _ = await check_bandwidth_limit(database)
         if not allowed:
             raise web.HTTPServiceUnavailable(reason="bandwidth limit exceeded")
+
+        # Check per-user access (limits/blocks) — extract user_id from file
+        file_user_id = file_data.get("user_id", "")
+        if file_user_id:
+            user_access = await check_user_access(database, str(file_user_id))
+            if not user_access["allowed"]:
+                raise web.HTTPServiceUnavailable(reason=user_access.get("reason", "user_blocked"))
 
         base      = str(request.url.origin())
         file_type = (
@@ -185,6 +193,14 @@ def build_app(bot: Bot, database) -> web.Application:
             stats    = {"total_users": 0, "total_files": 0}
             bw_stats = {"total_bandwidth": 0, "today_bandwidth": 0}
 
+        try:
+            bw_reset_info = await database.get_bandwidth_reset_info()
+        except Exception:
+            bw_reset_info = {
+                "reset_in": "N/A", "next_reset_epoch": 0,
+                "remaining_seconds": 0, "days": 0, "hours": 0, "minutes": 0,
+            }
+
         max_bw    = Config.get("max_bandwidth", 107374182400)
         bw_mode   = Config.get("bandwidth_mode", True)
         bw_used   = bw_stats["total_bandwidth"]
@@ -209,21 +225,30 @@ def build_app(bot: Bot, database) -> web.Application:
 
         return {
             **info,
-            "total_users":  stats.get("total_users",  0),
-            "total_chats":  stats.get("total_users",  0),
-            "total_files":  stats.get("total_files",  0),
-            "ram_used":     ram_used_fmt,
-            "ram_pct":      ram_pct,
-            "cpu_pct":      cpu_pct,
-            "uptime":       uptime_str,
-            "bw_mode":      bw_mode,
-            "bw_limit":     format_size(max_bw),
-            "bw_used":      format_size(bw_used),
-            "bw_today":     format_size(bw_today),
-            "bw_remaining": format_size(remaining),
-            "bw_pct":       bw_pct,
-            "bot_status":   "running" if getattr(bot, "me", None) else "initializing",
-            "active_conns": get_active_session_count(),
+            "total_users":         stats.get("total_users",  0),
+            "total_chats":         stats.get("total_users",  0),
+            "total_files":         stats.get("total_files",  0),
+            "ram_used":            ram_used_fmt,
+            "ram_pct":             ram_pct,
+            "cpu_pct":             cpu_pct,
+            "uptime":              uptime_str,
+            "bw_mode":             bw_mode,
+            "bw_limit":            format_size(max_bw),
+            "bw_limit_bytes":      max_bw,
+            "bw_used":             format_size(bw_used),
+            "bw_used_bytes":       bw_used,
+            "bw_today":            format_size(bw_today),
+            "bw_today_bytes":      bw_today,
+            "bw_remaining":        format_size(remaining),
+            "bw_remaining_bytes":  remaining,
+            "bw_pct":              bw_pct,
+            "bw_reset_in":         bw_reset_info.get("reset_in", "N/A"),
+            "bw_next_reset_epoch": bw_reset_info.get("next_reset_epoch", 0),
+            "bw_reset_days":       bw_reset_info.get("days", 0),
+            "bw_reset_hours":      bw_reset_info.get("hours", 0),
+            "bw_reset_minutes":    bw_reset_info.get("minutes", 0),
+            "bot_status":          "running" if getattr(bot, "me", None) else "initializing",
+            "active_conns":        get_active_session_count(),
         }
 
     def _format_uptime(seconds: float) -> str:
@@ -284,19 +309,25 @@ def build_app(bot: Bot, database) -> web.Application:
 
     async def api_bandwidth(request: web.Request):
         try:
-            stats     = await database.get_bandwidth_stats()
-            max_bw    = Config.get("max_bandwidth", 107374182400)
-            bw_mode   = Config.get("bandwidth_mode", True)
-            used      = stats["total_bandwidth"]
-            today     = stats["today_bandwidth"]
-            remaining = max(0, max_bw - used)
-            pct       = round((used / max_bw * 100) if max_bw else 0, 1)
+            stats       = await database.get_bandwidth_stats()
+            reset_info  = await database.get_bandwidth_reset_info()
+            max_bw      = Config.get("max_bandwidth", 107374182400)
+            bw_mode     = Config.get("bandwidth_mode", True)
+            used        = stats["total_bandwidth"]
+            today       = stats["today_bandwidth"]
+            remaining   = max(0, max_bw - used)
+            pct         = round((used / max_bw * 100) if max_bw else 0, 1)
             payload = {
                 **stats,
-                "limit":          max_bw,
-                "remaining":      remaining,
-                "percentage":     pct,
-                "bandwidth_mode": bw_mode,
+                "limit":            max_bw,
+                "remaining":        remaining,
+                "percentage":       pct,
+                "bandwidth_mode":   bw_mode,
+                "reset_in":         reset_info.get("reset_in", "N/A"),
+                "next_reset_epoch": reset_info.get("next_reset_epoch", 0),
+                "reset_days":       reset_info.get("days", 0),
+                "reset_hours":      reset_info.get("hours", 0),
+                "reset_minutes":    reset_info.get("minutes", 0),
                 "formatted": {
                     "total_bandwidth": format_size(used),
                     "today_bandwidth": format_size(today),
@@ -307,6 +338,108 @@ def build_app(bot: Bot, database) -> web.Application:
             return web.Response(text=json.dumps(payload), content_type="application/json")
         except Exception as exc:
             logger.error("api_bandwidth error: %s", exc)
+            return web.json_response({"error": str(exc)}, status=500)
+
+    async def api_user_bandwidth(request: web.Request):
+        """Get per-user bandwidth stats."""
+        try:
+            user_id = request.match_info.get("user_id", "")
+            if not user_id:
+                return web.json_response({"error": "user_id required"}, status=400)
+            ubw = await database.get_user_bandwidth(user_id)
+            user_doc = await database.get_user(user_id)
+            max_bw = user_doc.get("max_bandwidth", 0) if user_doc else 0
+            used   = ubw.get("used", 0)
+            pct    = round((used / max_bw * 100) if max_bw else 0, 1)
+            payload = {
+                "user_id":          user_id,
+                "used":             used,
+                "limit":            max_bw,
+                "remaining":        max(0, max_bw - used) if max_bw else None,
+                "percentage":       pct,
+                "reset_in":         ubw.get("reset_in", "N/A"),
+                "next_reset_epoch": ubw.get("next_reset_epoch", 0),
+                "blocked":          user_doc.get("blocked", False) if user_doc else False,
+                "formatted": {
+                    "used":      format_size(used),
+                    "limit":     format_size(max_bw) if max_bw else "Unlimited",
+                    "remaining": format_size(max(0, max_bw - used)) if max_bw else "Unlimited",
+                },
+            }
+            return web.Response(text=json.dumps(payload), content_type="application/json")
+        except Exception as exc:
+            logger.error("api_user_bandwidth error: %s", exc)
+            return web.json_response({"error": str(exc)}, status=500)
+
+    async def api_users(request: web.Request):
+        """Get paginated user list with limit/block info."""
+        try:
+            page  = int(request.rel_url.query.get("page", 1))
+            limit = min(int(request.rel_url.query.get("limit", 20)), 100)
+            skip  = (page - 1) * limit
+            users = await database.get_all_users(limit=limit, skip=skip)
+            total = await database.get_user_count()
+            result = []
+            for u in users:
+                result.append({
+                    "user_id":      u.get("user_id", ""),
+                    "username":     u.get("username", ""),
+                    "first_name":   u.get("first_name", ""),
+                    "blocked":      u.get("blocked", False),
+                    "block_reason": u.get("block_reason", ""),
+                    "max_bandwidth": u.get("max_bandwidth", 0),
+                    "max_files":    u.get("max_files", 0),
+                    "first_used":   u.get("first_used", "").isoformat() if u.get("first_used") else "",
+                    "last_activity": u.get("last_activity", "").isoformat() if u.get("last_activity") else "",
+                })
+            return web.json_response({
+                "users": result,
+                "total": total,
+                "page": page,
+                "pages": max(1, (total + limit - 1) // limit),
+            })
+        except Exception as exc:
+            logger.error("api_users error: %s", exc)
+            return web.json_response({"error": str(exc)}, status=500)
+
+    async def api_files(request: web.Request):
+        """Get paginated file list."""
+        try:
+            page    = int(request.rel_url.query.get("page", 1))
+            limit   = min(int(request.rel_url.query.get("limit", 20)), 100)
+            user_id = request.rel_url.query.get("user_id", "")
+            skip    = (page - 1) * limit
+            query   = {}
+            if user_id:
+                query["user_id"] = user_id
+            cursor = database.files.find(query).sort("created_at", -1).skip(skip).limit(limit)
+            files  = await cursor.to_list(length=limit)
+            total  = await database.files.count_documents(query)
+            base   = str(request.url.origin())
+            result = []
+            for f in files:
+                ftype = f.get("file_type", "document")
+                result.append({
+                    "file_id":    f.get("file_id", ""),
+                    "file_name":  f.get("file_name", ""),
+                    "file_size":  f.get("file_size", 0),
+                    "file_size_fmt": format_size(f.get("file_size", 0)),
+                    "file_type":  ftype,
+                    "mime_type":  f.get("mime_type", ""),
+                    "user_id":    f.get("user_id", ""),
+                    "created_at": f.get("created_at", "").isoformat() if f.get("created_at") else "",
+                    "stream_url": f"{base}/stream/{f['file_id']}",
+                    "download_url": f"{base}/dl/{f['file_id']}",
+                    "is_streamable": ftype in ("video", "audio"),
+                })
+            return web.json_response({
+                "files": result,
+                "total": total,
+                "page": page,
+                "pages": max(1, (total + limit - 1) // limit),
+            })
+        except Exception as exc:
+            logger.error("api_files error: %s", exc)
             return web.json_response({"error": str(exc)}, status=500)
 
     async def api_health(request: web.Request):
@@ -341,15 +474,32 @@ def build_app(bot: Bot, database) -> web.Application:
             return await api_health(request)
         raise web.HTTPFound("/bot_settings")
 
-    app.router.add_get("/",                      home)
-    app.router.add_get("/stream/{file_hash}",    stream_page)
-    app.router.add_get("/dl/{file_hash}",        download_file)
-    app.router.add_get("/bot_settings",          bot_settings_page)
-    app.router.add_get("/api/stats",             api_stats)
-    app.router.add_get("/api/bandwidth",         api_bandwidth)
-    app.router.add_get("/api/health",            api_health)
-    app.router.add_get("/stats",                 stats_endpoint)
-    app.router.add_get("/bandwidth",             bandwidth_endpoint)
-    app.router.add_get("/health",                health_endpoint)
+    # Web App pages
+    async def webapp_page(request: web.Request):
+        try:
+            info = _bot_info(bot)
+            return aiohttp_jinja2.render_template("webapp.html", request, {
+                "bot_name":     info["bot_name"],
+                "bot_username": info["bot_username"],
+            })
+        except Exception as exc:
+            logger.error("webapp page error: %s", exc)
+            return web.Response(status=500, text="Internal server error")
+
+    app.router.add_get("/",                           home)
+    app.router.add_get("/app",                        webapp_page)
+    app.router.add_get("/app/{path_info:.*}",         webapp_page)
+    app.router.add_get("/stream/{file_hash}",         stream_page)
+    app.router.add_get("/dl/{file_hash}",             download_file)
+    app.router.add_get("/bot_settings",               bot_settings_page)
+    app.router.add_get("/api/stats",                  api_stats)
+    app.router.add_get("/api/bandwidth",              api_bandwidth)
+    app.router.add_get("/api/bandwidth/user/{user_id}", api_user_bandwidth)
+    app.router.add_get("/api/health",                 api_health)
+    app.router.add_get("/api/users",                  api_users)
+    app.router.add_get("/api/files",                  api_files)
+    app.router.add_get("/stats",                      stats_endpoint)
+    app.router.add_get("/bandwidth",                  bandwidth_endpoint)
+    app.router.add_get("/health",                     health_endpoint)
 
     return app

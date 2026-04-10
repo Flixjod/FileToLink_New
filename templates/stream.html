@@ -792,67 +792,77 @@
       display: none;
       position: fixed;
       inset: 0;
-      z-index: 9990;
+      z-index: 9988;
       background: transparent;
       cursor: default;
       touch-action: none;
     }
     .settings-layer.active { display: block; }
 
-    /* ── Settings popup — YouTube-style premium redesign ─────────
-       Desktop: absolute bottom-right above ctrl-bar.
-       Mobile: fixed bottom sheet with slide-up animation.
-       Always uses fixed positioning to escape player stacking context.
+    /* ── Settings popup — fixed to viewport, above everything ─────────
+       Desktop: anchored above the settings button (computed in JS).
+       Mobile: full-width bottom sheet slide-up.
     ────────────────────────────────────────────────────────── */
     .settings-popup {
       position: fixed;
-      bottom: 70px;
-      right: 16px;
+      bottom: 80px;
+      right: 20px;
+      top: auto;
+      left: auto;
       background: var(--popup-bg);
       border: 1px solid var(--popup-border);
       border-radius: 18px;
       box-shadow: var(--popup-shadow);
       padding: 0;
       min-width: 290px;
-      max-width: min(340px, calc(100vw - 24px));
+      max-width: min(340px, calc(100vw - 32px));
       z-index: 9999;
       opacity: 0;
-      transform: translateY(12px) scale(.96);
+      transform: translateY(10px) scale(.97);
       pointer-events: none;
-      transition: opacity .22s ease, transform .25s cubic-bezier(.34,1.56,.64,1);
+      transition: opacity .2s ease, transform .22s cubic-bezier(.34,1.56,.64,1);
       backdrop-filter: blur(24px);
       -webkit-backdrop-filter: blur(24px);
       isolation: isolate;
       overflow: hidden;
+      /* Ensure it never clips off-screen */
+      max-height: calc(100vh - 100px);
+    }
+
+    /* Ensure popup stays in viewport on small screens */
+    @media (max-width: 768px) and (min-width: 601px) {
+      .settings-popup {
+        right: 8px;
+        min-width: 270px;
+      }
     }
 
     /* Mobile: bottom sheet */
     @media (max-width: 600px) {
       .settings-popup {
         position: fixed;
-        bottom: 0; left: 0; right: 0; top: auto;
+        bottom: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        top: auto !important;
         border-radius: 22px 22px 0 0;
         min-width: unset;
         max-width: 100vw;
+        width: 100vw;
         padding: 0;
-        transform: translateY(100%);
-        max-height: 82vh;
+        transform: translateY(100%) !important;
+        max-height: 85vh;
         overflow: hidden;
         z-index: 9999;
-        transition: opacity .25s ease, transform .3s cubic-bezier(.22,.61,.36,1);
+        transition: opacity .25s ease, transform .3s cubic-bezier(.22,.61,.36,1) !important;
         display: flex;
         flex-direction: column;
       }
     }
-    @media (max-width: 600px) and (orientation: portrait) {
-      .settings-popup {
-        max-height: 80vh;
-      }
-    }
 
     .settings-popup.open {
-      opacity: 1;
-      transform: translateY(0) scale(1);
+      opacity: 1 !important;
+      transform: translateY(0) scale(1) !important;
       pointer-events: all;
     }
 
@@ -1256,13 +1266,23 @@
       display: none;
       position: fixed;
       inset: 0;
-      background: rgba(0,0,0,.6);
-      z-index: 9991;
+      background: rgba(0,0,0,.55);
+      backdrop-filter: blur(2px);
+      -webkit-backdrop-filter: blur(2px);
+      z-index: 9989;
       pointer-events: none;
+      transition: opacity .25s ease;
     }
     .settings-overlay.active {
       display: block;
       pointer-events: auto;
+    }
+    /* Desktop: no dark overlay, only mobile */
+    @media (min-width: 601px) {
+      .settings-overlay.active {
+        display: none;
+        pointer-events: none;
+      }
     }
 
     /* non-video file card */
@@ -2377,23 +2397,45 @@
     const popup   = document.getElementById('settings-popup');
     const overlay = document.getElementById('settings-overlay');
     const layer   = document.getElementById('settings-layer');
-    if (popup)   popup.classList.add('open');
+    const btn     = document.getElementById('settings-btn');
+
+    settingsOpen   = true;
+    activeSubPanel = null;
+    _showPanel('main');
+
+    if (btn) btn.classList.add('active');
     if (overlay) overlay.classList.add('active');
     if (layer)   layer.classList.add('active');
-    settingsOpen = true;
-    _showPanel('main');
-    activeSubPanel = null;
-    const btn = document.getElementById('settings-btn');
-    if (btn) btn.classList.add('active');
 
-    // On desktop: position popup above settings button
-    if (popup && window.innerWidth > 600 && btn) {
-      const btnRect = btn.getBoundingClientRect();
-      popup.style.bottom  = (window.innerHeight - btnRect.top + 8) + 'px';
-      popup.style.right   = (window.innerWidth - btnRect.right + 0) + 'px';
-      popup.style.top     = 'auto';
-      popup.style.left    = 'auto';
+    if (popup) {
+      // Always reset inline style first
+      popup.style.cssText = '';
+      // Desktop: anchor above settings button
+      if (window.innerWidth > 600 && btn) {
+        const btnRect  = btn.getBoundingClientRect();
+        const popW     = Math.min(340, window.innerWidth - 32);
+        const popH     = popup.offsetHeight || 400;
+        let   right    = window.innerWidth - btnRect.right;
+        let   bottom   = window.innerHeight - btnRect.top + 10;
+        // Clamp so popup never goes off-screen left
+        if (window.innerWidth - right - popW < 8) {
+          right = window.innerWidth - popW - 8;
+        }
+        // Clamp so popup never goes off-screen top
+        if (bottom + popH > window.innerHeight - 10) {
+          bottom = Math.max(10, window.innerHeight - popH - 10);
+        }
+        popup.style.bottom = bottom + 'px';
+        popup.style.right  = Math.max(8, right) + 'px';
+        popup.style.top    = 'auto';
+        popup.style.left   = 'auto';
+      }
+      popup.classList.add('open');
     }
+
+    // Rebuild dynamic track lists each time settings open
+    _populateAudioTracks();
+    _populateSubtitleTracks();
   }
 
   function closeSettings() {
@@ -2606,6 +2648,45 @@
     populateTracks();
     // Go back to main after a short delay for feedback
     setTimeout(closeSubPanel, 200);
+  }
+
+  // ── Alias helpers called by openSettings ─────────────────────────────────
+  function _populateAudioTracks() {
+    if (!video) return;
+    const atList = document.getElementById('audio-sub-list');
+    // Show/hide the audio menu row based on track availability
+    const audioRow = document.querySelector('[onclick*="audio"]');
+    const hasAudio = video.audioTracks && video.audioTracks.length > 1;
+    // Update the main menu row's value display
+    const mainVal = document.getElementById('audio-main-val');
+    if (!hasAudio) {
+      if (mainVal) mainVal.textContent = 'Default';
+      if (atList) {
+        atList.innerHTML = '<div class="settings-sub-item sub-active"><div class="sub-item-check"><i class="fa-solid fa-check"></i></div><span class="sub-item-label">Default</span></div>';
+      }
+    } else {
+      // Let populateTracks handle it
+      if (atList) {
+        atList.innerHTML = '';
+        const enabled = Array.from(video.audioTracks).find(t => t.enabled);
+        if (mainVal) mainVal.textContent = enabled ? (enabled.label || 'Track 1') : 'Default';
+      }
+    }
+    populateTracks();
+  }
+
+  function _populateSubtitleTracks() {
+    if (!video) return;
+    const stList = document.getElementById('subs-sub-list');
+    const mainVal = document.getElementById('subs-main-val');
+    const hasSubs = video.textTracks && video.textTracks.length > 0;
+    if (!hasSubs) {
+      if (mainVal) mainVal.textContent = 'None';
+      if (stList) {
+        stList.innerHTML = '<div class="settings-sub-item sub-active"><div class="sub-item-check"><i class="fa-solid fa-check"></i></div><span class="sub-item-label">No subtitles available</span></div>';
+      }
+    }
+    // populateTracks handles the rest
   }
 
   // Legacy stubs (keep for backward compat with keyboard shortcuts / old code)

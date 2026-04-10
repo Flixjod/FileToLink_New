@@ -641,3 +641,242 @@ async def logs_command(client: Client, message: Message):
                 text=f"❌ **{small_caps('error reading logs')}:** `{exc2}`",
                 reply_to_message_id=message.id,
             )
+
+
+# ── User Limit & Block Management Commands ────────────────────────────────────
+
+@Client.on_message(filters.command("setlimit") & filters.private, group=2)
+async def setlimit_command(client: Client, message: Message):
+    """Usage: /setlimit <user_id> bw=<bytes> files=<count>"""
+    if not await check_owner(client, message):
+        return
+
+    args = message.command[1:]
+    if not args or not args[0].lstrip("-").isdigit():
+        await client.send_message(
+            chat_id=message.chat.id,
+            text=(
+                f"📡 **{small_caps('setlimit usage')}**\n\n"
+                "`/setlimit <user_id> bw=<bytes> files=<count>`\n\n"
+                f"{small_caps('examples')}:\n"
+                "`/setlimit 123456 bw=5368709120`  (5 GB)\n"
+                "`/setlimit 123456 files=50`\n"
+                "`/setlimit 123456 bw=1073741824 files=20`\n\n"
+                f"{small_caps('use 0 to remove a limit')}"
+            ),
+            reply_to_message_id=message.id,
+        )
+        return
+
+    user_id   = args[0]
+    max_bw    = 0
+    max_files = 0
+
+    for arg in args[1:]:
+        if arg.startswith("bw="):
+            try:    max_bw    = int(arg[3:])
+            except: pass
+        elif arg.startswith("files="):
+            try:    max_files = int(arg[6:])
+            except: pass
+
+    await db.set_user_limit(user_id, max_bandwidth=max_bw, max_files=max_files)
+    await client.send_message(
+        chat_id=message.chat.id,
+        text=(
+            f"✅ **{small_caps('limits updated')}**\n\n"
+            f"👤 **{small_caps('user')}:** `{user_id}`\n"
+            f"📡 **{small_caps('bandwidth')}:** `{format_size(max_bw) if max_bw else 'Unlimited'}`\n"
+            f"📂 **{small_caps('files')}:** `{max_files if max_files else 'Unlimited'}`"
+        ),
+        reply_to_message_id=message.id,
+    )
+
+
+@Client.on_message(filters.command("blockuser") & filters.private, group=2)
+async def blockuser_command(client: Client, message: Message):
+    """Usage: /blockuser <user_id> [reason]"""
+    if not await check_owner(client, message):
+        return
+
+    args = message.command[1:]
+    if not args or not args[0].lstrip("-").isdigit():
+        await client.send_message(
+            chat_id=message.chat.id,
+            text=f"❌ **{small_caps('usage')}**: `/blockuser <user_id> [reason]`",
+            reply_to_message_id=message.id,
+        )
+        return
+
+    user_id = args[0]
+    reason  = " ".join(args[1:]) if len(args) > 1 else "admin_action"
+
+    await db.block_user(user_id, reason=reason)
+
+    # Notify user if possible
+    try:
+        await client.send_message(
+            chat_id=int(user_id),
+            text=(
+                f"🚫 **{small_caps('account suspended')}**\n\n"
+                f"ʏᴏᴜʀ ᴀᴄᴄᴏᴜɴᴛ ʜᴀꜱ ʙᴇᴇɴ **ꜱᴜꜱᴘᴇɴᴅᴇᴅ**.\n"
+                f"_ʀᴇᴀꜱᴏɴ:_ `{reason}`\n\n"
+                "ᴘʟᴇᴀꜱᴇ ᴄᴏɴᴛᴀᴄᴛ ᴛʜᴇ ᴀᴅᴍɪɴɪꜱᴛʀᴀᴛᴏʀ ᴛᴏ ᴀᴘᴘᴇᴀʟ."
+            ),
+        )
+    except Exception:
+        pass
+
+    await client.send_message(
+        chat_id=message.chat.id,
+        text=(
+            f"🚫 **{small_caps('user blocked')}**\n\n"
+            f"👤 **{small_caps('user')}:** `{user_id}`\n"
+            f"📋 **{small_caps('reason')}:** `{reason}`\n\n"
+            "ᴀʟʟ ꜱᴛʀᴇᴀᴍɪɴɢ & ᴅᴏᴡɴʟᴏᴀᴅ ᴀᴄᴄᴇꜱꜱ ɴᴏᴡ ʙʟᴏᴄᴋᴇᴅ."
+        ),
+        reply_to_message_id=message.id,
+    )
+
+
+@Client.on_message(filters.command("unblockuser") & filters.private, group=2)
+async def unblockuser_command(client: Client, message: Message):
+    """Usage: /unblockuser <user_id>"""
+    if not await check_owner(client, message):
+        return
+
+    args = message.command[1:]
+    if not args or not args[0].lstrip("-").isdigit():
+        await client.send_message(
+            chat_id=message.chat.id,
+            text=f"❌ **{small_caps('usage')}**: `/unblockuser <user_id>`",
+            reply_to_message_id=message.id,
+        )
+        return
+
+    user_id = args[0]
+    success = await db.unblock_user(user_id)
+
+    # Notify user
+    try:
+        await client.send_message(
+            chat_id=int(user_id),
+            text=(
+                f"✅ **{small_caps('account restored')}**\n\n"
+                "ʏᴏᴜʀ ᴀᴄᴄᴇꜱꜱ ʜᴀꜱ ʙᴇᴇɴ **ʀᴇꜱᴛᴏʀᴇᴅ**.\n"
+                "ʏᴏᴜ ᴄᴀɴ ɴᴏᴡ ʀᴇꜱᴜᴍᴇ ꜱᴛʀᴇᴀᴍɪɴɢ ᴀɴᴅ ᴅᴏᴡɴʟᴏᴀᴅɪɴɢ."
+            ),
+        )
+    except Exception:
+        pass
+
+    await client.send_message(
+        chat_id=message.chat.id,
+        text=(
+            f"✅ **{small_caps('user unblocked')}**\n\n"
+            f"👤 **{small_caps('user')}:** `{user_id}`\n"
+            f"{'ᴀᴄᴄᴇꜱꜱ ʀᴇꜱᴛᴏʀᴇᴅ' if success else '⚠️ ᴜꜱᴇʀ ɴᴏᴛ ꜰᴏᴜɴᴅ'}"
+        ),
+        reply_to_message_id=message.id,
+    )
+
+
+@Client.on_message(filters.command("resetbw") & filters.private, group=2)
+async def resetbw_command(client: Client, message: Message):
+    """Usage: /resetbw <user_id> — Reset per-user bandwidth"""
+    if not await check_owner(client, message):
+        return
+
+    args = message.command[1:]
+    if not args or not args[0].lstrip("-").isdigit():
+        await client.send_message(
+            chat_id=message.chat.id,
+            text=f"❌ **{small_caps('usage')}**: `/resetbw <user_id>`",
+            reply_to_message_id=message.id,
+        )
+        return
+
+    user_id = args[0]
+    # Also unblock if blocked for bandwidth
+    user = await db.get_user(user_id)
+    if user and user.get("blocked") and user.get("block_reason") == "bandwidth_limit":
+        await db.unblock_user(user_id)
+        try:
+            await client.send_message(
+                chat_id=int(user_id),
+                text=(
+                    f"✅ **{small_caps('bandwidth reset')}**\n\n"
+                    "ʏᴏᴜʀ ʙᴀɴᴅᴡɪᴅᴛʜ ʜᴀꜱ ʙᴇᴇɴ ʀᴇꜱᴇᴛ ᴀɴᴅ ᴀᴄᴄᴇꜱꜱ ʀᴇꜱᴛᴏʀᴇᴅ."
+                ),
+            )
+        except Exception:
+            pass
+
+    await db.reset_user_bandwidth(user_id)
+    await client.send_message(
+        chat_id=message.chat.id,
+        text=(
+            f"🔄 **{small_caps('bandwidth reset')}**\n\n"
+            f"👤 **{small_caps('user')}:** `{user_id}`\n"
+            "ᴘᴇʀ-ᴜꜱᴇʀ ʙᴀɴᴅᴡɪᴅᴛʜ ʀᴇꜱᴇᴛ ᴛᴏ ᴢᴇʀᴏ."
+        ),
+        reply_to_message_id=message.id,
+    )
+
+
+@Client.on_message(filters.command("userstatus") & filters.private, group=2)
+async def userstatus_command(client: Client, message: Message):
+    """Usage: /userstatus <user_id>"""
+    if not await check_owner(client, message):
+        return
+
+    args = message.command[1:]
+    if not args or not args[0].lstrip("-").isdigit():
+        await client.send_message(
+            chat_id=message.chat.id,
+            text=f"❌ **{small_caps('usage')}**: `/userstatus <user_id>`",
+            reply_to_message_id=message.id,
+        )
+        return
+
+    user_id  = args[0]
+    user     = await db.get_user(user_id)
+    ubw      = await db.get_user_bandwidth(user_id)
+    files_count = await db.files.count_documents({"user_id": user_id})
+
+    if not user:
+        await client.send_message(
+            chat_id=message.chat.id,
+            text=f"❌ **{small_caps('user not found')}**: `{user_id}`",
+            reply_to_message_id=message.id,
+        )
+        return
+
+    max_bw    = user.get("max_bandwidth", 0)
+    max_files = user.get("max_files", 0)
+    bw_used   = ubw.get("used", 0)
+    bw_pct    = round(bw_used / max_bw * 100, 1) if max_bw else 0
+    blocked   = user.get("blocked", False)
+
+    text = (
+        f"👤 **{small_caps('user status')}**\n\n"
+        f"🆔 **{small_caps('user id')}:** `{user_id}`\n"
+        f"📛 **{small_caps('name')}:** `{user.get('first_name', 'N/A')}`\n"
+        f"🔘 **{small_caps('status')}:** {'🚫 ʙʟᴏᴄᴋᴇᴅ' if blocked else '✅ ᴀᴄᴛɪᴠᴇ'}\n"
+    )
+    if blocked:
+        text += f"📋 **{small_caps('block reason')}:** `{user.get('block_reason', 'N/A')}`\n"
+    text += (
+        f"\n📡 **{small_caps('bandwidth')}**\n"
+        f"  ᴜꜱᴇᴅ: `{format_size(bw_used)}`"
+        f"{f' / `{format_size(max_bw)}` ({bw_pct}%)' if max_bw else ' (ɴᴏ ʟɪᴍɪᴛ)'}\n"
+        f"  ʀᴇꜱᴇᴛ ɪɴ: `{ubw.get('reset_in', 'N/A')}`\n"
+        f"\n📂 **{small_caps('files')}:** `{files_count}`"
+        f"{f' / {max_files}' if max_files else ' (ɴᴏ ʟɪᴍɪᴛ)'}"
+    )
+
+    await client.send_message(
+        chat_id=message.chat.id,
+        text=text,
+        reply_to_message_id=message.id,
+    )
