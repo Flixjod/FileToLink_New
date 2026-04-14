@@ -17,7 +17,9 @@ from config import Config
 from database import Database
 from helper import (
     StreamingService, check_bandwidth_limit, format_size,
-    should_warn_global_bw,
+    should_warn_global_bw, should_warn_global_bw_over,
+    should_warn_user_bw, should_warn_user_bw_over,
+    is_privileged_user,
 )
 from helper.stream import (
     get_active_session_count,
@@ -171,43 +173,86 @@ def build_app(bot: Bot, database) -> web.Application:
         # ── User bandwidth enforcement ─────────────────────────────
         user_id = str(file_data.get("user_id", ""))
         if user_id and Config.get("user_bw_mode", True):
-            allowed_user, user_stats = await database.check_user_bw_limit(user_id)
-            if not allowed_user:
-                max_ubw = Config.get("max_user_bandwidth", 10737418240)
-                days_r  = user_stats.get("days_remaining", "?")
-                # Fire-and-forget warning
-                async def _warn_user_limit():
-                    try:
-                        uid_int = int(user_id)
-                        await bot.send_message(
-                            uid_int,
-                            f"🚫 **Your monthly bandwidth limit has been reached!**\n\n"
-                            f"📊 Limit: `{format_size(max_ubw)}`\n"
-                            f"🔄 Resets in: `{days_r} days`\n\n"
-                            "Streaming and downloads are currently **blocked** until your limit resets "
-                            "or an admin manually resets your quota.",
-                        )
-                    except Exception:
-                        pass
-                asyncio.ensure_future(_warn_user_limit())
-                raise web.HTTPServiceUnavailable(reason="user bandwidth limit exceeded")
+            # Sudo / Owner are fully exempt from per-user bandwidth limits
+            _privileged = await is_privileged_user(database, user_id)
+            if not _privileged:
+                allowed_user, user_stats = await database.check_user_bw_limit(user_id)
+                if not allowed_user:
+                    max_ubw = Config.get("max_user_bandwidth", 10737418240)
+                    days_r  = user_stats.get("days_remaining", "?")
+                    # Send over-limit notification ONLY ONCE per cycle
+                    async def _warn_user_limit(_uid=user_id, _max=max_ubw, _days=days_r):
+                        try:
+                            if await should_warn_user_bw_over(database, _uid):
+                                await bot.send_message(
+                                    int(_uid),
+                                    f"🚫 **Your monthly bandwidth limit has been reached!**\n\n"
+                                    f"📊 Limit: `{format_size(_max)}`\n"
+                                    f"🔄 Resets in: `{_days} days`\n\n"
+                                    "Streaming and downloads are currently **blocked** until your limit resets "
+                                    "or an admin manually resets your quota.",
+                                )
+                        except Exception:
+                            pass
+                    asyncio.ensure_future(_warn_user_limit())
+                    raise web.HTTPServiceUnavailable(reason="user bandwidth limit exceeded")
+                else:
+                    # Check if approaching limit — warn ONCE per cycle
+                    async def _maybe_warn_user_approaching(_uid=user_id):
+                        try:
+                            if await should_warn_user_bw(database, _uid):
+                                stats   = await database.get_user_bw(_uid)
+                                max_ubw = Config.get("max_user_bandwidth", 10737418240)
+                                days_r  = stats.get("days_remaining", "?")
+                                pct     = stats.get("pct", 0)
+                                await bot.send_message(
+                                    int(_uid),
+                                    f"⚠️ **Bandwidth Warning — {pct:.1f}% used**\n\n"
+                                    f"📊 Your monthly bandwidth: `{format_size(stats['used'])}` / `{format_size(max_ubw)}`\n"
+                                    f"🔄 Resets in: `{days_r} days`\n\n"
+                                    "You are approaching your limit. Streaming may be blocked soon.",
+                                )
+                        except Exception:
+                            pass
+                    asyncio.ensure_future(_maybe_warn_user_approaching())
 
         # ── Global bandwidth enforcement ───────────────────────────
         allowed, cycle_stats = await check_bandwidth_limit(database)
         if not allowed:
+            # Notify owners ONCE when limit is first exceeded
+            async def _notify_global_over():
+                try:
+                    if await should_warn_global_bw_over(database):
+                        days_r = cycle_stats.get("days_remaining", "?")
+                        for owner_id in Config.OWNER_ID:
+                            try:
+                                await bot.send_message(
+                                    owner_id,
+                                    f"🚫 **Global bandwidth limit reached!**\n\n"
+                                    f"📊 Limit: `{format_size(Config.get('max_bandwidth', 107374182400))}`\n"
+                                    f"🔄 Resets in: `{days_r} days`\n\n"
+                                    "All streaming and downloads are **blocked** until the cycle resets.",
+                                )
+                            except Exception:
+                                pass
+                except Exception:
+                    pass
+            asyncio.ensure_future(_notify_global_over())
             raise web.HTTPServiceUnavailable(reason="bandwidth limit exceeded")
 
-        # Warn owner if approaching limit (fire-and-forget)
+        # Warn owner if approaching global limit — only ONCE per cycle
         async def _maybe_warn_owner():
             try:
                 if await should_warn_global_bw(database):
-                    days_r = cycle_stats.get("days_remaining", "?")
-                    pct    = cycle_stats.get("pct", 0)
+                    stats  = await database.get_global_bw_cycle()
+                    days_r = stats.get("days_remaining", "?")
+                    pct    = stats.get("pct", 0)
                     for owner_id in Config.OWNER_ID:
                         try:
                             await bot.send_message(
                                 owner_id,
                                 f"⚠️ **Global bandwidth at {pct:.1f}%** of monthly limit!\n"
+                                f"📊 Used: `{format_size(stats.get('used', 0))}` / `{format_size(Config.get('max_bandwidth', 107374182400))}`\n"
                                 f"🔄 Resets in `{days_r}` days.",
                             )
                         except Exception:
@@ -259,22 +304,26 @@ def build_app(bot: Bot, database) -> web.Application:
         if file_data:
             user_id = str(file_data.get("user_id", ""))
             if user_id and Config.get("user_bw_mode", True):
-                allowed_user, user_stats = await database.check_user_bw_limit(user_id)
-                if not allowed_user:
-                    max_ubw = Config.get("max_user_bandwidth", 10737418240)
-                    days_r  = user_stats.get("days_remaining", "?")
-                    async def _warn_dl_limit():
-                        try:
-                            await bot.send_message(
-                                int(user_id),
-                                f"🚫 **Download blocked — bandwidth limit reached!**\n\n"
-                                f"📊 Limit: `{format_size(max_ubw)}`\n"
-                                f"🔄 Resets in: `{days_r} days`",
-                            )
-                        except Exception:
-                            pass
-                    asyncio.ensure_future(_warn_dl_limit())
-                    raise web.HTTPServiceUnavailable(reason="user bandwidth limit exceeded")
+                # Sudo / Owner exempt
+                if not await is_privileged_user(database, user_id):
+                    allowed_user, user_stats = await database.check_user_bw_limit(user_id)
+                    if not allowed_user:
+                        max_ubw = Config.get("max_user_bandwidth", 10737418240)
+                        days_r  = user_stats.get("days_remaining", "?")
+                        # Only notify once per cycle
+                        async def _warn_dl_limit(_uid=user_id, _max=max_ubw, _days=days_r):
+                            try:
+                                if await should_warn_user_bw_over(database, _uid):
+                                    await bot.send_message(
+                                        int(_uid),
+                                        f"🚫 **Download blocked — bandwidth limit reached!**\n\n"
+                                        f"📊 Limit: `{format_size(_max)}`\n"
+                                        f"🔄 Resets in: `{_days} days`",
+                                    )
+                            except Exception:
+                                pass
+                        asyncio.ensure_future(_warn_dl_limit())
+                        raise web.HTTPServiceUnavailable(reason="user bandwidth limit exceeded")
 
         return await _tracked_stream(request, file_hash, is_download=True)
 
@@ -544,11 +593,13 @@ def build_app(bot: Bot, database) -> web.Application:
 
             user_id = str(user_data.get("id", ""))
             bw_info = {}
+            privileged = False
             if user_id:
                 try:
-                    bw_stats = await database.get_user_bw(user_id)
-                    max_ubw  = Config.get("max_user_bandwidth", 10737418240)
-                    bw_info  = {
+                    privileged = await is_privileged_user(database, user_id)
+                    bw_stats   = await database.get_user_bw(user_id)
+                    max_ubw    = Config.get("max_user_bandwidth", 10737418240)
+                    bw_info    = {
                         "used":      bw_stats.get("used", 0),
                         "limit":     max_ubw,
                         "remaining": max(0, max_ubw - bw_stats.get("used", 0)),
@@ -564,11 +615,12 @@ def build_app(bot: Bot, database) -> web.Application:
                     pass
 
             return web.json_response({
-                "ok":       True,
-                "user":     user_data,
-                "bw_info":  bw_info,
-                "bw_mode":  Config.get("bandwidth_mode", True),
+                "ok":           True,
+                "user":         user_data,
+                "bw_info":      bw_info,
+                "bw_mode":      Config.get("bandwidth_mode", True),
                 "user_bw_mode": Config.get("user_bw_mode", True),
+                "is_privileged": privileged,
             }, headers={"Access-Control-Allow-Origin": "*"})
 
         except Exception as exc:
@@ -593,34 +645,40 @@ def build_app(bot: Bot, database) -> web.Application:
             limit   = min(int(request.rel_url.query.get("limit", 20)), 50)
             skip    = (page - 1) * limit
 
-            # Check user bw limit
+            # Check if privileged (sudo/owner) — they are always allowed
+            _privileged = await is_privileged_user(database, user_id) if user_id else False
+
+            # Check user bw limit (skip for privileged)
             allowed = True
-            if user_id and Config.get("user_bw_mode", True):
+            if user_id and Config.get("user_bw_mode", True) and not _privileged:
                 allowed, _ = await database.check_user_bw_limit(user_id)
 
             cursor, total = await database.find_files(user_id, [skip + 1, limit])
             files = []
+            base  = str(request.url.origin())
             async for doc in cursor:
-                base = str(request.url.origin())
                 files.append({
-                    "file_id":   doc["file_id"],
-                    "file_name": doc["file_name"],
-                    "file_size": doc["file_size"],
+                    "file_id":       doc["file_id"],
+                    "file_name":     doc["file_name"],
+                    "file_size":     doc["file_size"],
                     "file_size_fmt": format_size(doc["file_size"]),
-                    "file_type": doc.get("file_type", "document"),
-                    "mime_type": doc.get("mime_type", ""),
-                    "stream_url": f"{base}/stream/{doc['file_id']}",
-                    "download_url": f"{base}/dl/{doc['file_id']}",
-                    "created_at": doc.get("created_at", "").isoformat() if hasattr(doc.get("created_at", ""), "isoformat") else str(doc.get("created_at", "")),
+                    "file_type":     doc.get("file_type", "document"),
+                    "mime_type":     doc.get("mime_type", ""),
+                    "stream_url":    f"{base}/stream/{doc['file_id']}",
+                    "download_url":  f"{base}/dl/{doc['file_id']}",
+                    "share_url":     f"{base}/stream/{doc['file_id']}",
+                    "telegram_url":  f"https://t.me/{_bot_info(bot)['bot_username']}?start={doc['file_id']}",
+                    "created_at":    doc.get("created_at", "").isoformat() if hasattr(doc.get("created_at", ""), "isoformat") else str(doc.get("created_at", "")),
                 })
 
             return web.json_response({
-                "ok":       True,
-                "files":    files,
-                "total":    total,
-                "page":     page,
-                "pages":    max(1, -(-total // limit)),
-                "allowed":  allowed,
+                "ok":            True,
+                "files":         files,
+                "total":         total,
+                "page":          page,
+                "pages":         max(1, -(-total // limit)),
+                "allowed":       allowed,
+                "is_privileged": _privileged,
             }, headers={"Access-Control-Allow-Origin": "*"})
 
         except Exception as exc:

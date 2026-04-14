@@ -90,6 +90,8 @@
       color: var(--accent);
     }
     .nav-btn.active i { filter: drop-shadow(0 0 6px var(--accent-glow)); }
+    .nav-btn[style*="display:none"],
+    .nav-btn[style*="display: none"] { display: none !important; }
 
     /* ── Page System ── */
     .page {
@@ -175,93 +177,161 @@
     .empty-state i { font-size: 2.8rem; opacity: .35; }
     .empty-state p { font-size: .84rem; color: var(--text-secondary); max-width: 260px; line-height: 1.6; }
 
-    /* ── Bandwidth Cards ── */
-    .bw-cards {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
-      margin-bottom: 16px;
-    }
-    @media (max-width: 360px) { .bw-cards { grid-template-columns: 1fr; } }
-
-    .bw-card {
+    /* ── User Bandwidth Card (full-width, beautiful) ── */
+    .user-bw-card {
       background: var(--card-bg);
       border: 1px solid var(--card-border);
-      border-radius: 18px;
-      padding: 16px;
+      border-radius: 20px;
+      padding: 18px 20px;
+      margin-bottom: 14px;
       position: relative;
       overflow: hidden;
     }
-    .bw-card::before {
+    .user-bw-card::before {
       content: '';
       position: absolute;
       top: 0; left: 0; right: 0;
       height: 3px;
-      border-radius: 18px 18px 0 0;
+      background: linear-gradient(90deg,#667eea,#a78bfa,#764ba2);
+      border-radius: 20px 20px 0 0;
     }
-    .bw-card.global::before { background: linear-gradient(90deg,#4facfe,#00f2fe); }
-    .bw-card.user::before   { background: linear-gradient(90deg,#667eea,#764ba2); }
-
-    .bw-card-lbl {
-      font-size: .64rem;
+    .user-bw-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    .user-bw-label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: .75rem;
+      font-weight: 700;
       text-transform: uppercase;
       letter-spacing: .08em;
       color: var(--text-secondary);
-      font-weight: 600;
-      margin-bottom: 10px;
-      display: flex;
-      align-items: center;
-      gap: 6px;
     }
-    .bw-card-lbl i { font-size: .7rem; }
-
-    .bw-card-val {
-      font-size: 1.18rem;
+    .user-bw-label i {
+      font-size: .8rem;
+      color: #a78bfa;
+    }
+    .user-bw-pct-badge {
+      font-size: .78rem;
+      font-weight: 800;
+      font-family: 'JetBrains Mono', monospace;
+      padding: 3px 10px;
+      border-radius: 999px;
+      background: rgba(167,139,250,.15);
+      color: #a78bfa;
+      border: 1px solid rgba(167,139,250,.25);
+    }
+    .user-bw-pct-badge.warn { background: rgba(246,211,101,.15); color: #f6d365; border-color: rgba(246,211,101,.25); }
+    .user-bw-pct-badge.crit { background: rgba(255,107,107,.15); color: #ff6b6b; border-color: rgba(255,107,107,.25); }
+    .user-bw-values {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+      margin-bottom: 10px;
+    }
+    .user-bw-used {
+      font-size: 1.6rem;
       font-weight: 800;
       color: var(--text-primary);
-      margin-bottom: 2px;
+      font-family: 'JetBrains Mono', monospace;
+      line-height: 1;
+    }
+    .user-bw-sep { font-size: .9rem; color: var(--text-secondary); font-weight: 600; }
+    .user-bw-limit {
+      font-size: .9rem;
+      color: var(--text-secondary);
+      font-weight: 600;
       font-family: 'JetBrains Mono', monospace;
     }
-
-    .bw-card-sub {
-      font-size: .7rem;
-      color: var(--text-secondary);
+    .user-bw-bar-wrap {
+      height: 8px;
+      background: var(--bar-bg);
+      border-radius: 999px;
+      overflow: hidden;
       margin-bottom: 10px;
     }
-
-    .mini-bar { height: 5px; background: var(--bar-bg); border-radius: 999px; overflow: hidden; margin-bottom: 6px; }
-    .mini-bar-fill { height: 100%; border-radius: 999px; transition: width .8s ease; }
-    .mini-bar-fill.global { background: linear-gradient(90deg,#4facfe,#00f2fe); }
-    .mini-bar-fill.user   { background: linear-gradient(90deg,#667eea,#a78bfa); }
-    .mini-bar-fill.warn   { background: linear-gradient(90deg,#f6d365,#fda085); }
-    .mini-bar-fill.crit   { background: linear-gradient(90deg,#ff6b6b,#ee0979); }
-
-    .bw-card-pct {
-      font-size: .72rem;
-      font-weight: 700;
-      color: #4facfe;
+    .user-bw-bar-fill {
+      height: 100%;
+      border-radius: 999px;
+      background: linear-gradient(90deg,#667eea,#a78bfa);
+      transition: width .8s ease;
     }
-    .bw-card-pct.user   { color: #a78bfa; }
-    .bw-card-pct.warn   { color: #f6d365; }
-    .bw-card-pct.crit   { color: #ff6b6b; }
-
-    /* Reset countdown */
-    .reset-chip {
-      display: inline-flex;
+    .user-bw-bar-fill.warn { background: linear-gradient(90deg,#f6d365,#fda085); }
+    .user-bw-bar-fill.crit { background: linear-gradient(90deg,#ff6b6b,#ee0979); }
+    .user-bw-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .user-bw-remaining {
+      font-size: .78rem;
+      color: var(--badge-ok-c);
+      font-weight: 700;
+      display: flex;
       align-items: center;
       gap: 5px;
-      background: rgba(79,172,254,.1);
-      border: 1px solid rgba(79,172,254,.2);
-      border-radius: 999px;
-      padding: 4px 10px;
-      font-size: .66rem;
-      font-weight: 700;
-      color: #4facfe;
-      font-family: 'JetBrains Mono', monospace;
-      margin-top: 6px;
     }
-    .reset-chip i { animation: tickPulse 1s ease-in-out infinite; }
+    .user-bw-remaining i { font-size: .72rem; }
+    .user-bw-reset {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-size: .7rem;
+      color: var(--text-secondary);
+      font-weight: 600;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .user-bw-reset i { font-size: .65rem; animation: tickPulse 1s ease-in-out infinite; }
     @keyframes tickPulse { 0%,100%{opacity:1;} 50%{opacity:.3;} }
+
+    /* Privileged (sudo/owner) badge */
+    .priv-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: linear-gradient(135deg, rgba(246,211,101,.18), rgba(253,160,133,.18));
+      border: 1px solid rgba(246,211,101,.3);
+      border-radius: 12px;
+      padding: 8px 14px;
+      font-size: .78rem;
+      font-weight: 700;
+      color: #f6d365;
+      margin-bottom: 14px;
+    }
+    .priv-badge i { font-size: .85rem; }
+
+    /* Blocked banner */
+    .blocked-banner {
+      background: rgba(255,107,107,.12);
+      border: 1px solid rgba(255,107,107,.28);
+      border-radius: 16px;
+      padding: 14px 18px;
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+    .blocked-banner i {
+      font-size: 1.2rem;
+      color: var(--badge-err-c);
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+    .blocked-banner-text h4 {
+      font-size: .86rem;
+      font-weight: 800;
+      color: var(--badge-err-c);
+      margin-bottom: 3px;
+    }
+    .blocked-banner-text p {
+      font-size: .76rem;
+      color: var(--text-secondary);
+      line-height: 1.55;
+    }
 
     /* ── User Profile Card ── */
     .profile-card {
@@ -343,7 +413,6 @@
       display: flex;
       align-items: center;
       gap: 12px;
-      cursor: pointer;
       transition: background .15s ease, transform .15s ease;
       -webkit-tap-highlight-color: transparent;
     }
@@ -414,35 +483,11 @@
       color: #43e97b;
     }
     .fa-dl:hover { background: rgba(67,233,123,.2); }
-
-    /* ── Blocked Banner ── */
-    .blocked-banner {
-      background: rgba(255,107,107,.12);
-      border: 1px solid rgba(255,107,107,.28);
-      border-radius: 16px;
-      padding: 14px 18px;
-      display: flex;
-      align-items: flex-start;
-      gap: 12px;
-      margin-bottom: 14px;
+    .fa-share {
+      background: rgba(79,172,254,.13);
+      color: #4facfe;
     }
-    .blocked-banner i {
-      font-size: 1.2rem;
-      color: var(--badge-err-c);
-      flex-shrink: 0;
-      margin-top: 1px;
-    }
-    .blocked-banner-text h4 {
-      font-size: .86rem;
-      font-weight: 800;
-      color: var(--badge-err-c);
-      margin-bottom: 3px;
-    }
-    .blocked-banner-text p {
-      font-size: .76rem;
-      color: var(--text-secondary);
-      line-height: 1.55;
-    }
+    .fa-share:hover { background: rgba(79,172,254,.22); }
 
     /* ── Pagination ── */
     .pagination {
@@ -491,15 +536,16 @@
 
   <!-- ── Nav Bar ── -->
   <nav class="nav-bar" role="tablist">
-    <button class="nav-btn active" data-page="files" onclick="switchPage('files', this)">
+    <button class="nav-btn active" id="nav-files" data-page="files" onclick="switchPage('files', this)">
       <i class="fa-solid fa-folder-open"></i>
       <span>Files</span>
     </button>
-    <button class="nav-btn" data-page="bandwidth" onclick="switchPage('bandwidth', this)">
+    <!-- Bandwidth tab: only shown for privileged users — hidden by default, revealed after auth -->
+    <button class="nav-btn" id="nav-bandwidth" data-page="bandwidth" onclick="switchPage('bandwidth', this)" style="display:none;">
       <i class="fa-solid fa-satellite-dish"></i>
       <span>Bandwidth</span>
     </button>
-    <button class="nav-btn" data-page="profile" onclick="switchPage('profile', this)">
+    <button class="nav-btn" id="nav-profile" data-page="profile" onclick="switchPage('profile', this)">
       <i class="fa-solid fa-user-circle"></i>
       <span>Profile</span>
     </button>
@@ -515,7 +561,13 @@
       <span id="files-count" style="font-size:.8rem;color:var(--text-secondary);font-weight:600;"></span>
     </div>
 
-    <!-- Blocked banner (shown when user is over limit) -->
+    <!-- Privileged badge (sudo/owner) -->
+    <div class="priv-badge" id="priv-badge" style="display:none;">
+      <i class="fa-solid fa-crown"></i>
+      Privileged — Unlimited bandwidth access
+    </div>
+
+    <!-- Blocked banner (shown when normal user is over limit) -->
     <div class="blocked-banner" id="blocked-banner" style="display:none;">
       <i class="fa-solid fa-circle-exclamation"></i>
       <div class="blocked-banner-text">
@@ -549,7 +601,7 @@
     </div>
   </div>
 
-  <!-- ═══════════ BANDWIDTH PAGE ═══════════ -->
+  <!-- ═══════════ BANDWIDTH PAGE (privileged only) ═══════════ -->
   <div class="page" id="page-bandwidth">
     <div class="sec-header">
       <div class="sec-title">
@@ -564,57 +616,48 @@
     <div id="bw-loader" class="loader"><div class="loader-ring"></div><span>Loading…</span></div>
     <div id="bw-content" style="display:none;">
 
-      <div class="bw-cards">
-        <!-- Global -->
-        <div class="bw-card global">
-          <div class="bw-card-lbl"><i class="fa-solid fa-globe"></i> Global</div>
-          <div class="bw-card-val" id="g-used-twa">—</div>
-          <div class="bw-card-sub" id="g-sub-twa">of — total</div>
-          <div class="mini-bar"><div class="mini-bar-fill global" id="g-bar-twa" style="width:0%"></div></div>
-          <div class="bw-card-pct" id="g-pct-twa">0%</div>
-          <div class="reset-chip"><i class="fa-solid fa-rotate"></i><span id="g-reset-twa">—</span></div>
+      <!-- Global BW card -->
+      <div class="user-bw-card" style="margin-bottom:14px;">
+        <div style="position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#4facfe,#00f2fe);border-radius:20px 20px 0 0;"></div>
+        <div class="user-bw-header">
+          <div class="user-bw-label"><i class="fa-solid fa-globe"></i> Global Bandwidth</div>
+          <div class="user-bw-pct-badge" id="g-pct-twa">0%</div>
         </div>
-
-        <!-- Per-user -->
-        <div class="bw-card user">
-          <div class="bw-card-lbl"><i class="fa-solid fa-user-shield"></i> Your Limit</div>
-          <div class="bw-card-val" id="u-used-twa">—</div>
-          <div class="bw-card-sub" id="u-sub-twa">of — total</div>
-          <div class="mini-bar"><div class="mini-bar-fill user" id="u-bar-twa" style="width:0%"></div></div>
-          <div class="bw-card-pct user" id="u-pct-twa">0%</div>
-          <div class="reset-chip"><i class="fa-solid fa-rotate"></i><span id="u-reset-twa">—</span></div>
+        <div class="user-bw-values">
+          <div class="user-bw-used" id="g-used-twa" style="color:#4facfe">—</div>
+          <div class="user-bw-sep">/</div>
+          <div class="user-bw-limit" id="g-limit-twa">—</div>
+        </div>
+        <div class="user-bw-bar-wrap">
+          <div class="user-bw-bar-fill" id="g-bar-twa" style="width:0%;background:linear-gradient(90deg,#4facfe,#00f2fe);"></div>
+        </div>
+        <div class="user-bw-footer">
+          <div class="user-bw-remaining" style="color:#4facfe;">
+            <i class="fa-solid fa-battery-three-quarters"></i>
+            <span id="g-rem-twa">—</span> remaining
+          </div>
+          <div class="user-bw-reset">
+            <i class="fa-solid fa-rotate"></i>
+            <span id="g-reset-twa">—</span>
+          </div>
         </div>
       </div>
 
-      <!-- Info rows -->
+      <!-- Per-User config info rows -->
       <div class="info-rows">
         <div class="info-row">
           <span class="ir-label">
-            <span class="ir-icon" style="background:rgba(79,172,254,.15)"><i class="fa-solid fa-gauge-high" style="color:#4facfe"></i></span>
-            Global Limit
-          </span>
-          <span class="ir-value" id="g-limit-twa">—</span>
-        </div>
-        <div class="info-row">
-          <span class="ir-label">
-            <span class="ir-icon" style="background:rgba(67,233,123,.15)"><i class="fa-solid fa-battery-three-quarters" style="color:#43e97b"></i></span>
-            Global Remaining
-          </span>
-          <span class="ir-value" id="g-rem-twa" style="color:#43e97b">—</span>
-        </div>
-        <div class="info-row">
-          <span class="ir-label">
-            <span class="ir-icon" style="background:rgba(167,139,250,.15)"><i class="fa-solid fa-user" style="color:#a78bfa"></i></span>
-            Your Remaining
-          </span>
-          <span class="ir-value" id="u-rem-twa" style="color:#a78bfa">—</span>
-        </div>
-        <div class="info-row">
-          <span class="ir-label">
-            <span class="ir-icon" style="background:rgba(246,211,101,.15)"><i class="fa-solid fa-calendar" style="color:#f6d365"></i></span>
+            <span class="ir-icon" style="background:rgba(79,172,254,.15)"><i class="fa-solid fa-calendar" style="color:#4facfe"></i></span>
             Reset In
           </span>
           <span class="ir-value" id="bw-reset-days-twa">—</span>
+        </div>
+        <div class="info-row">
+          <span class="ir-label">
+            <span class="ir-icon" style="background:rgba(246,211,101,.15)"><i class="fa-solid fa-sun" style="color:#f6d365"></i></span>
+            Today's Usage
+          </span>
+          <span class="ir-value" id="g-today-twa">—</span>
         </div>
         <div class="info-row">
           <span class="ir-label">
@@ -622,6 +665,20 @@
             BW Enforcement
           </span>
           <span class="badge badge-ok" id="bw-mode-twa">Active</span>
+        </div>
+        <div class="info-row">
+          <span class="ir-label">
+            <span class="ir-icon" style="background:rgba(167,139,250,.15)"><i class="fa-solid fa-user" style="color:#a78bfa"></i></span>
+            Per-User Limit
+          </span>
+          <span class="ir-value" id="g-user-limit-twa">—</span>
+        </div>
+        <div class="info-row">
+          <span class="ir-label">
+            <span class="ir-icon" style="background:rgba(255,107,107,.15)"><i class="fa-solid fa-users-slash" style="color:#ff6b6b"></i></span>
+            Users Over Limit
+          </span>
+          <span class="ir-value" id="g-users-over-twa" style="color:#ff6b6b">—</span>
         </div>
       </div>
 
@@ -652,6 +709,12 @@
         </div>
       </div>
 
+      <!-- Privileged note in profile -->
+      <div class="priv-badge" id="p-priv-badge" style="display:none;width:100%;justify-content:center;margin-bottom:14px;">
+        <i class="fa-solid fa-crown"></i>
+        Privileged account — No bandwidth limits
+      </div>
+
       <div class="info-rows">
         <div class="info-row">
           <span class="ir-label">
@@ -660,33 +723,61 @@
           </span>
           <span class="ir-value" id="p-username">—</span>
         </div>
-        <div class="info-row">
+        <div class="info-row" id="p-bw-row-used">
           <span class="ir-label">
             <span class="ir-icon" style="background:rgba(246,211,101,.15)"><i class="fa-solid fa-upload" style="color:#f6d365"></i></span>
             BW Used (Month)
           </span>
           <span class="ir-value" id="p-bw-used">—</span>
         </div>
-        <div class="info-row">
+        <div class="info-row" id="p-bw-row-rem">
           <span class="ir-label">
             <span class="ir-icon" style="background:rgba(67,233,123,.15)"><i class="fa-solid fa-battery-three-quarters" style="color:#43e97b"></i></span>
             BW Remaining
           </span>
           <span class="ir-value" id="p-bw-rem" style="color:#43e97b">—</span>
         </div>
-        <div class="info-row">
+        <div class="info-row" id="p-bw-row-limit">
           <span class="ir-label">
             <span class="ir-icon" style="background:rgba(102,126,234,.15)"><i class="fa-solid fa-gauge-high" style="color:#667eea"></i></span>
             Monthly Limit
           </span>
           <span class="ir-value" id="p-bw-limit">—</span>
         </div>
-        <div class="info-row">
+        <div class="info-row" id="p-bw-row-pct">
           <span class="ir-label">
             <span class="ir-icon" style="background:rgba(167,139,250,.15)"><i class="fa-solid fa-chart-line" style="color:#a78bfa"></i></span>
             Usage
           </span>
           <span class="ir-value" id="p-bw-pct">—</span>
+        </div>
+      </div>
+
+      <!-- Per-user BW card (only for normal users) -->
+      <div id="p-bw-card" style="display:none;">
+        <div class="user-bw-card">
+          <div class="user-bw-header">
+            <div class="user-bw-label"><i class="fa-solid fa-user-shield"></i> Monthly Bandwidth</div>
+            <div class="user-bw-pct-badge" id="p-bw-pct-badge">0%</div>
+          </div>
+          <div class="user-bw-values">
+            <div class="user-bw-used" id="p-bw-used2">—</div>
+            <div class="user-bw-sep">/</div>
+            <div class="user-bw-limit" id="p-bw-limit2">—</div>
+          </div>
+          <div class="user-bw-bar-wrap">
+            <div class="user-bw-bar-fill" id="p-bw-bar" style="width:0%"></div>
+          </div>
+          <div class="user-bw-footer">
+            <div class="user-bw-remaining">
+              <i class="fa-solid fa-battery-three-quarters"></i>
+              <span id="p-bw-rem2">—</span> remaining
+            </div>
+            <div class="user-bw-reset">
+              <i class="fa-solid fa-rotate"></i>
+              <span id="p-bw-reset">—</span>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -703,7 +794,6 @@
   if (tg) {
     tg.ready();
     tg.expand();
-    // Sync Telegram theme
     document.documentElement.style.setProperty('--tg-bg', tg.themeParams.bg_color || '#0f0c29');
     document.documentElement.style.setProperty('--tg-sec-bg', tg.themeParams.secondary_bg_color || '#302b63');
     document.documentElement.style.setProperty('--tg-text', tg.themeParams.text_color || '#ffffff');
@@ -713,17 +803,22 @@
 
   const INIT_DATA = tg?.initData || '';
 
+  // ── Global state ──────────────────────────────────────────
+  let IS_PRIVILEGED = false;   // set after auth
+  let userAllowed   = true;
+
   // ── Page navigation ─────────────────────────────────────────
   function switchPage(name, btn) {
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
     document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
-    document.getElementById('page-' + name).classList.add('active');
+    const pg = document.getElementById('page-' + name);
+    if (pg) pg.classList.add('active');
     btn.classList.add('active');
     if (name === 'bandwidth') loadBandwidth();
-    if (name === 'profile') loadProfile();
+    if (name === 'profile')   loadProfile();
   }
 
-  // ── Helpers ────────────────────────────────────────────────
+  // ── Helpers ─────────────────────────────────────────────────
   function fmtCountdown(sec) {
     if (sec <= 0) return 'Soon';
     const d = Math.floor(sec / 86400);
@@ -735,7 +830,13 @@
   }
 
   function setBarClass(el, pct, baseClass) {
-    el.className = `mini-bar-fill ${baseClass}`;
+    el.classList.remove('warn','crit');
+    if (pct > 90) el.classList.add('crit');
+    else if (pct > 70) el.classList.add('warn');
+  }
+
+  function setPctBadgeClass(el, pct) {
+    el.classList.remove('warn','crit');
     if (pct > 90) el.classList.add('crit');
     else if (pct > 70) el.classList.add('warn');
   }
@@ -752,10 +853,46 @@
     return ['fi-doc', 'fa-solid fa-file'];
   }
 
+  function escHtml(str) {
+    return String(str).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  }
+
+  // ── Share a file ──────────────────────────────────────────
+  function shareFile(telegramUrl, streamUrl, fileName) {
+    try {
+      // Try native Telegram share first
+      if (tg && tg.shareMessage) {
+        tg.shareMessage(telegramUrl);
+        return;
+      }
+      // Try Web Share API
+      if (navigator.share) {
+        navigator.share({
+          title: fileName,
+          text: `Check out this file: ${fileName}`,
+          url: streamUrl,
+        }).catch(() => {});
+        return;
+      }
+      // Fallback: copy to clipboard
+      const txt = telegramUrl || streamUrl;
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(txt).then(() => {
+          tg?.showAlert('📋 Link copied to clipboard!');
+        }).catch(() => {
+          tg?.showAlert('Link: ' + txt);
+        });
+      } else {
+        tg?.showAlert('Share link:\n' + txt);
+      }
+    } catch(e) {
+      tg?.showAlert('Share link:\n' + (telegramUrl || streamUrl));
+    }
+  }
+
   // ── Files Page ─────────────────────────────────────────────
   let currentPage = 1;
   let totalPages  = 1;
-  let userAllowed = true;
   let _filesLoaded = false;
 
   async function loadFiles(page = 1) {
@@ -779,10 +916,16 @@
       if (!d.ok) throw new Error(d.error || 'unknown error');
 
       document.getElementById('files-loader').style.display = 'none';
-      userAllowed = d.allowed !== false;
+      userAllowed   = d.allowed !== false;
+      IS_PRIVILEGED = d.is_privileged === true;
 
-      // Show blocked banner if over limit
-      document.getElementById('blocked-banner').style.display = userAllowed ? 'none' : '';
+      // Reveal bandwidth tab only for privileged
+      const bwTab = document.getElementById('nav-bandwidth');
+      if (bwTab) bwTab.style.display = IS_PRIVILEGED ? '' : 'none';
+
+      // Show privileged badge or blocked banner
+      document.getElementById('priv-badge').style.display    = IS_PRIVILEGED ? '' : 'none';
+      document.getElementById('blocked-banner').style.display = (!IS_PRIVILEGED && !userAllowed) ? '' : 'none';
 
       if (!d.files || d.files.length === 0) {
         document.getElementById('files-empty').style.display = '';
@@ -800,26 +943,36 @@
         const isStreamable = ['video', 'audio'].includes(file.file_type);
         const card = document.createElement('div');
         card.className = 'file-card';
+
+        const streamBtn = (isStreamable && (userAllowed || IS_PRIVILEGED)) ? `
+          <button class="fa-btn fa-stream" onclick="openStream('${escHtml(file.stream_url)}', '${escHtml(file.file_name)}')" title="Stream">
+            <i class="fa-solid fa-play"></i>
+          </button>
+        ` : '';
+
+        const dlBtn = (userAllowed || IS_PRIVILEGED) ? `
+          <button class="fa-btn fa-dl" onclick="downloadFile('${escHtml(file.download_url)}')" title="Download">
+            <i class="fa-solid fa-cloud-arrow-down"></i>
+          </button>
+        ` : '';
+
+        const shareBtn = `
+          <button class="fa-btn fa-share" onclick="shareFile('${escHtml(file.telegram_url)}','${escHtml(file.stream_url)}','${escHtml(file.file_name)}')" title="Share">
+            <i class="fa-solid fa-share-nodes"></i>
+          </button>
+        `;
+
         card.innerHTML = `
           <div class="file-icon ${iconClass}"><i class="${iconTag}"></i></div>
           <div class="file-info">
             <div class="file-name">${escHtml(file.file_name)}</div>
             <div class="file-meta">
-              <span class="file-type-badge">${file.file_type}</span>
-              <span>${file.file_size_fmt}</span>
+              <span class="file-type-badge">${escHtml(file.file_type)}</span>
+              <span>${escHtml(file.file_size_fmt)}</span>
             </div>
           </div>
           <div class="file-actions">
-            ${isStreamable && userAllowed ? `
-              <button class="fa-btn fa-stream" onclick="openStream('${file.stream_url}', '${escHtml(file.file_name)}')" title="Stream">
-                <i class="fa-solid fa-play"></i>
-              </button>
-            ` : ''}
-            ${userAllowed ? `
-              <button class="fa-btn fa-dl" onclick="downloadFile('${file.download_url}')" title="Download">
-                <i class="fa-solid fa-cloud-arrow-down"></i>
-              </button>
-            ` : ''}
+            ${streamBtn}${dlBtn}${shareBtn}
           </div>
         `;
         list.appendChild(card);
@@ -841,7 +994,7 @@
   }
 
   function openStream(url, name) {
-    if (!userAllowed) {
+    if (!userAllowed && !IS_PRIVILEGED) {
       tg?.showAlert('Your bandwidth limit has been reached. Streaming is temporarily blocked.');
       return;
     }
@@ -849,84 +1002,55 @@
   }
 
   function downloadFile(url) {
-    if (!userAllowed) {
+    if (!userAllowed && !IS_PRIVILEGED) {
       tg?.showAlert('Your bandwidth limit has been reached. Downloads are temporarily blocked.');
       return;
     }
     tg?.openLink(url);
   }
 
-  function escHtml(str) {
-    return String(str).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
-  }
-
-  // ── Bandwidth Page ─────────────────────────────────────────
-  let _bwTimer = null;
-  let _bwResetEnd = null;
-
+  // ── Bandwidth Page (privileged only) ──────────────────────
   async function loadBandwidth() {
     document.getElementById('bw-loader').style.display  = '';
     document.getElementById('bw-content').style.display = 'none';
     document.getElementById('bw-error').style.display   = 'none';
 
     try {
-      // Fetch global BW
-      const gRes = await fetch('/api/twa/bandwidth');
+      // Fetch full BW data (requires privileged access concept)
+      const gRes  = await fetch('/api/bandwidth/full');
       const gData = await gRes.json();
-
-      // Fetch user BW (requires auth)
-      let uData = null;
-      if (INIT_DATA) {
-        try {
-          const aRes = await fetch('/api/twa/auth', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ initData: INIT_DATA }),
-          });
-          const aBody = await aRes.json();
-          if (aBody.ok) uData = aBody.bw_info;
-        } catch(e) {}
-      }
 
       document.getElementById('bw-loader').style.display  = 'none';
       document.getElementById('bw-content').style.display = '';
 
+      const gPct = gData.percentage ?? 0;
+
       // Global card
-      const gPct = gData.pct ?? 0;
-      setEl('g-used-twa', gData.formatted?.used   ?? '—');
-      setEl('g-sub-twa',  `of ${gData.formatted?.limit ?? '—'} total`);
-      setEl('g-pct-twa',  gPct + '%');
+      setEl('g-used-twa',  gData.formatted?.total_bandwidth ?? '—');
+      setEl('g-limit-twa', gData.formatted?.limit           ?? '—');
+      setEl('g-pct-twa',   gPct + '%');
       const gBar = document.getElementById('g-bar-twa');
-      if (gBar) { gBar.style.width = gPct + '%'; setBarClass(gBar, gPct, 'global'); }
-      const gPctEl = document.getElementById('g-pct-twa');
-      if (gPctEl) { gPctEl.className = 'bw-card-pct' + (gPct > 90 ? ' crit' : gPct > 70 ? ' warn' : ''); }
-      setEl('g-limit-twa',  gData.formatted?.limit     ?? '—');
-      setEl('g-rem-twa',    gData.formatted?.remaining ?? '—');
+      if (gBar) { gBar.style.width = Math.min(gPct, 100) + '%'; setBarClass(gBar, gPct, 'global'); }
+      const gPctBadge = document.getElementById('g-pct-twa');
+      if (gPctBadge) setPctBadgeClass(gPctBadge, gPct);
+      setEl('g-rem-twa', gData.formatted?.remaining ?? '—');
+      setEl('g-reset-twa', `${gData.days_remaining ?? '—'} days`);
       setEl('bw-reset-days-twa', `${gData.days_remaining ?? '—'} days`);
 
-      // Reset countdown
-      if (gData.days_remaining != null) {
-        _bwResetEnd = Math.floor(Date.now() / 1000) + (gData.days_remaining * 86400);
-        setEl('g-reset-twa', fmtCountdown(gData.days_remaining * 86400));
+      // Today
+      const todayFmt = gData.formatted?.today_bandwidth ?? '—';
+      setEl('g-today-twa', todayFmt);
+
+      // BW mode badge
+      const bwModeBadge = document.getElementById('bw-mode-twa');
+      if (bwModeBadge) {
+        bwModeBadge.textContent = gData.bandwidth_mode ? 'Active' : 'Disabled';
+        bwModeBadge.className   = 'badge ' + (gData.bandwidth_mode ? 'badge-ok' : 'badge-err');
       }
 
-      // User card
-      if (uData) {
-        const uPct = uData.pct ?? 0;
-        setEl('u-used-twa', uData.formatted?.used      ?? '—');
-        setEl('u-sub-twa',  `of ${uData.formatted?.limit ?? '—'} total`);
-        setEl('u-pct-twa',  uPct + '%');
-        setEl('u-rem-twa',  uData.formatted?.remaining ?? '—');
-        const uBar = document.getElementById('u-bar-twa');
-        if (uBar) { uBar.style.width = uPct + '%'; setBarClass(uBar, uPct, 'user'); }
-        const uPctEl = document.getElementById('u-pct-twa');
-        if (uPctEl) { uPctEl.className = 'bw-card-pct user' + (uPct > 90 ? ' crit' : uPct > 70 ? ' warn' : ''); }
-        setEl('u-reset-twa', `${uData.days_remaining ?? '—'}d left`);
-      } else {
-        setEl('u-used-twa', 'N/A');
-        setEl('u-sub-twa',  'Login required');
-        setEl('u-reset-twa', '—');
-      }
+      // Per-user limit & users over limit
+      setEl('g-user-limit-twa', gData.formatted?.user_limit ?? '—');
+      setEl('g-users-over-twa', gData.users_over_limit ?? '—');
 
     } catch(err) {
       document.getElementById('bw-loader').style.display  = 'none';
@@ -954,19 +1078,53 @@
       document.getElementById('profile-loader').style.display  = 'none';
       document.getElementById('profile-content').style.display = '';
 
-      const user   = data.user || {};
-      const bwInfo = data.bw_info || {};
-      const fname  = [user.first_name, user.last_name].filter(Boolean).join(' ') || 'Telegram User';
+      const user      = data.user || {};
+      const bwInfo    = data.bw_info || {};
+      const privileged = data.is_privileged === true;
+      const fname     = [user.first_name, user.last_name].filter(Boolean).join(' ') || 'Telegram User';
 
       setEl('p-name',     fname);
       setEl('p-id',       `ID: ${user.id || '—'}`);
       setEl('p-username', user.username ? `@${user.username}` : 'N/A');
 
-      if (bwInfo.formatted) {
-        setEl('p-bw-used',  bwInfo.formatted.used);
-        setEl('p-bw-rem',   bwInfo.formatted.remaining);
-        setEl('p-bw-limit', bwInfo.formatted.limit);
-        setEl('p-bw-pct',   `${bwInfo.pct ?? 0}%`);
+      // Show/hide privileged badge
+      const pPrivBadge = document.getElementById('p-priv-badge');
+      if (pPrivBadge) pPrivBadge.style.display = privileged ? '' : 'none';
+
+      if (privileged) {
+        // Hide bw rows for privileged users — they have no limit
+        ['p-bw-row-used','p-bw-row-rem','p-bw-row-limit','p-bw-row-pct'].forEach(id => {
+          const el = document.getElementById(id);
+          if (el) el.style.display = 'none';
+        });
+        document.getElementById('p-bw-card').style.display = 'none';
+      } else {
+        // Show bw rows
+        ['p-bw-row-used','p-bw-row-rem','p-bw-row-limit','p-bw-row-pct'].forEach(id => {
+          const el = document.getElementById(id);
+          if (el) el.style.display = '';
+        });
+        if (bwInfo.formatted) {
+          setEl('p-bw-used',  bwInfo.formatted.used);
+          setEl('p-bw-rem',   bwInfo.formatted.remaining);
+          setEl('p-bw-limit', bwInfo.formatted.limit);
+          setEl('p-bw-pct',   `${bwInfo.pct ?? 0}%`);
+
+          // Per-user BW card
+          const pct = bwInfo.pct ?? 0;
+          setEl('p-bw-used2',  bwInfo.formatted.used);
+          setEl('p-bw-limit2', bwInfo.formatted.limit);
+          setEl('p-bw-rem2',   bwInfo.formatted.remaining);
+          setEl('p-bw-reset',  `${bwInfo.days_remaining ?? '—'}d left`);
+          setEl('p-bw-pct-badge', pct + '%');
+
+          const pBar = document.getElementById('p-bw-bar');
+          if (pBar) { pBar.style.width = Math.min(pct, 100) + '%'; setBarClass(pBar, pct, 'user'); }
+          const pBadge = document.getElementById('p-bw-pct-badge');
+          if (pBadge) setPctBadgeClass(pBadge, pct);
+
+          document.getElementById('p-bw-card').style.display = '';
+        }
       }
 
     } catch(err) {

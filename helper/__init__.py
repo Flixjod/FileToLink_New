@@ -13,7 +13,10 @@ from .bandwidth import (
     check_bandwidth_limit,
     check_user_bandwidth_limit,
     should_warn_global_bw,
+    should_warn_global_bw_over,
     should_warn_user_bw,
+    should_warn_user_bw_over,
+    is_privileged_user,
     track_bandwidth_usage,
 )
 
@@ -30,6 +33,9 @@ __all__ = [
     "check_bandwidth_limit",
     "check_user_bandwidth_limit",
     "should_warn_global_bw",
+    "should_warn_global_bw_over",
     "should_warn_user_bw",
+    "should_warn_user_bw_over",
+    "is_privileged_user",
     "track_bandwidth_usage",
 ]

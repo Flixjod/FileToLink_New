@@ -16,7 +16,8 @@ from config import Config
 from helper import (
     Cryptic, format_size, escape_markdown, small_caps,
     check_fsub, check_owner, check_user_bandwidth_limit,
-    should_warn_user_bw, format_uptime,
+    should_warn_user_bw, should_warn_user_bw_over,
+    is_privileged_user, format_uptime,
 )
 from database import db
 
@@ -94,17 +95,28 @@ async def file_handler(client: Client, message: Message):
         allowed, ubw_stats = await check_user_bandwidth_limit(db, user_id)
         if not allowed:
             days_r = ubw_stats.get("days_remaining", "?")
-            await client.send_message(
-                chat_id=message.chat.id,
-                text=(
-                    f"❌ **{small_caps('your monthly bandwidth limit is reached')}!**\n\n"
-                    f"📊 **{small_caps('used')}:** `{format_size(ubw_stats.get('used', 0))}`\n"
-                    f"📶 **{small_caps('limit')}:** `{format_size(ubw_stats.get('limit', 0))}`\n"
-                    f"🔄 **{small_caps('resets in')}:** `{days_r}` ᴅᴀʏꜱ"
-                ),
-                reply_to_message_id=message.id,
-                disable_web_page_preview=True,
-            )
+            # Send blocked notification only ONCE per cycle
+            if await should_warn_user_bw_over(db, str(user_id)):
+                await client.send_message(
+                    chat_id=message.chat.id,
+                    text=(
+                        f"🚫 **{small_caps('monthly bandwidth limit reached')}!**\n\n"
+                        f"📊 **{small_caps('used')}:** `{format_size(ubw_stats.get('used', 0))}`\n"
+                        f"📶 **{small_caps('limit')}:** `{format_size(ubw_stats.get('limit', 0))}`\n"
+                        f"🔄 **{small_caps('resets in')}:** `{days_r}` ᴅᴀʏꜱ\n\n"
+                        "ꜱᴛʀᴇᴀᴍɪɴɢ ᴀɴᴅ ᴅᴏᴡɴʟᴏᴀᴅꜱ ᴀʀᴇ ʙʟᴏᴄᴋᴇᴅ ᴜɴᴛɪʟ ʏᴏᴜʀ ᴄʏᴄʟᴇ ʀᴇꜱᴇᴛꜱ."
+                    ),
+                    reply_to_message_id=message.id,
+                    disable_web_page_preview=True,
+                )
+            else:
+                # Silent block — already notified
+                await client.send_message(
+                    chat_id=message.chat.id,
+                    text=f"🚫 **{small_caps('bandwidth limit reached')}** — ʙʟᴏᴄᴋᴇᴅ. ʀᴇꜱᴇᴛꜱ ɪɴ `{days_r}` ᴅᴀʏꜱ.",
+                    reply_to_message_id=message.id,
+                    disable_web_page_preview=True,
+                )
             return
 
     if message.document:

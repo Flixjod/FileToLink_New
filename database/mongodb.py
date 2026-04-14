@@ -346,37 +346,46 @@ class Database:
     async def _ensure_user_bw_cycle(self, user_id: str) -> Dict:
         """
         Ensure the user has an active monthly bandwidth record.
-        Each user's 30-day window starts the first time they consume bandwidth.
+        The user's cycle is aligned to the GLOBAL cycle (bot-start based),
+        so all users share the same monthly window — counting from the first
+        time the bot started, not from the user's first use.
         """
-        now  = datetime.utcnow()
-        doc  = await self.user_bw.find_one({"user_id": user_id})
+        now         = datetime.utcnow()
+        global_cycle = await self._ensure_global_cycle()
+        cycle_start  = global_cycle["cycle_start"]
+        cycle_end    = global_cycle["cycle_end"]
+
+        doc = await self.user_bw.find_one({"user_id": user_id})
 
         if doc:
-            cycle_start = doc["cycle_start"]
-            if (now - cycle_start).days < 30:
-                return doc
-            # Cycle expired — reset in-place (preserve history via cycle_start update)
-            await self.user_bw.update_one(
-                {"user_id": user_id},
-                {
-                    "$set": {
-                        "cycle_start": now,
-                        "cycle_end":   now + timedelta(days=30),
-                        "used_bytes":  0,
-                        "last_reset":  now,
-                    }
-                },
-            )
-            return await self.user_bw.find_one({"user_id": user_id})
+            # If user's cycle_start differs from global cycle_start → reset
+            if doc["cycle_start"] < cycle_start:
+                await self.user_bw.update_one(
+                    {"user_id": user_id},
+                    {
+                        "$set": {
+                            "cycle_start":    cycle_start,
+                            "cycle_end":      cycle_end,
+                            "used_bytes":     0,
+                            "last_reset":     now,
+                            "bw_warn_sent":   False,
+                            "bw_over_sent":   False,
+                        }
+                    },
+                )
+                return await self.user_bw.find_one({"user_id": user_id})
+            return doc
 
-        # First-ever record for this user
+        # First-ever record for this user — use global cycle window
         new_doc = {
-            "user_id":     user_id,
-            "cycle_start": now,
-            "cycle_end":   now + timedelta(days=30),
-            "used_bytes":  0,
-            "last_reset":  now,
-            "created_at":  now,
+            "user_id":      user_id,
+            "cycle_start":  cycle_start,
+            "cycle_end":    cycle_end,
+            "used_bytes":   0,
+            "last_reset":   now,
+            "created_at":   now,
+            "bw_warn_sent": False,   # warning (approaching limit) sent once
+            "bw_over_sent": False,   # over-limit notification sent once
         }
         await self.user_bw.insert_one(new_doc)
         return await self.user_bw.find_one({"user_id": user_id})
@@ -434,18 +443,53 @@ class Database:
             logger.error("check_user_bw_limit error: %s", e)
             return True, {}
 
-    async def reset_user_bw(self, user_id: str) -> bool:
-        """Manually reset a single user's bandwidth cycle."""
+    async def should_send_user_bw_warn(self, user_id: str) -> bool:
+        """
+        Return True if the user warning should be sent (only once per cycle).
+        Atomically sets bw_warn_sent=True to prevent duplicates.
+        """
         try:
-            now = datetime.utcnow()
+            result = await self.user_bw.find_one_and_update(
+                {"user_id": user_id, "bw_warn_sent": {"$ne": True}},
+                {"$set": {"bw_warn_sent": True}},
+            )
+            return result is not None
+        except Exception as e:
+            logger.error("should_send_user_bw_warn error: %s", e)
+            return False
+
+    async def should_send_user_bw_over(self, user_id: str) -> bool:
+        """
+        Return True if the over-limit message should be sent (only once per cycle).
+        Atomically sets bw_over_sent=True to prevent duplicates.
+        """
+        try:
+            result = await self.user_bw.find_one_and_update(
+                {"user_id": user_id, "bw_over_sent": {"$ne": True}},
+                {"$set": {"bw_over_sent": True}},
+            )
+            return result is not None
+        except Exception as e:
+            logger.error("should_send_user_bw_over error: %s", e)
+            return False
+
+    async def reset_user_bw(self, user_id: str) -> bool:
+        """Manually reset a single user's bandwidth cycle (admin action)."""
+        try:
+            now          = datetime.utcnow()
+            global_cycle = await self._ensure_global_cycle()
+            cycle_start  = global_cycle["cycle_start"]
+            cycle_end    = global_cycle["cycle_end"]
             await self.user_bw.update_one(
                 {"user_id": user_id},
                 {
                     "$set": {
-                        "cycle_start": now,
-                        "cycle_end":   now + timedelta(days=30),
-                        "used_bytes":  0,
-                        "last_reset":  now,
+                        "cycle_start":    cycle_start,
+                        "cycle_end":      cycle_end,
+                        "used_bytes":     0,
+                        "last_reset":     now,
+                        "bw_warn_sent":   False,
+                        "bw_over_sent":   False,
                     }
                 },
                 upsert=True,
@@ -453,6 +497,35 @@ class Database:
             return True
         except Exception as e:
             logger.error("reset_user_bw error: %s", e)
+            return False
+
+    async def should_send_global_bw_warn(self) -> bool:
+        """
+        Return True if the global bandwidth warning should be sent (only once per cycle).
+        Stores the sent flag on the active global_bw cycle document.
+        """
+        try:
+            result = await self.global_bw.find_one_and_update(
+                {"active": True, "bw_warn_sent": {"$ne": True}},
+                {"$set": {"bw_warn_sent": True}},
+            )
+            return result is not None
+        except Exception as e:
+            logger.error("should_send_global_bw_warn error: %s", e)
+            return False
+
+    async def should_send_global_bw_over(self) -> bool:
+        """
+        Return True if the global over-limit message should be sent (only once per cycle).
+        """
+        try:
+            result = await self.global_bw.find_one_and_update(
+                {"active": True, "bw_over_sent": {"$ne": True}},
+                {"$set": {"bw_over_sent": True}},
+            )
+            return result is not None
+        except Exception as e:
+            logger.error("should_send_global_bw_over error: %s", e)
             return False
 
     # ══════════════════════════════════════════════════════════════
