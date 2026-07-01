@@ -10,7 +10,8 @@ class Database:
     def __init__(self, mongo_uri: str, database_name: str):
         self.client = AsyncIOMotorClient(
             mongo_uri,
-            maxPoolSize=15,
+            appname="FileToLink_Bot",
+            maxPoolSize=10,
             minPoolSize=1,
             maxIdleTimeMS=30000,
             waitQueueTimeoutMS=5000,
