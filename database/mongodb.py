@@ -10,9 +10,9 @@ class Database:
     def __init__(self, mongo_uri: str, database_name: str):
         self.client = AsyncIOMotorClient(
             mongo_uri,
-            maxPoolSize=50,
-            minPoolSize=10,
-            maxIdleTimeMS=45000,
+            maxPoolSize=15,
+            minPoolSize=1,
+            maxIdleTimeMS=30000,
             waitQueueTimeoutMS=5000,
             serverSelectionTimeoutMS=5000,
         )
