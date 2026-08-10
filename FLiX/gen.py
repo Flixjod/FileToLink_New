@@ -15,8 +15,12 @@ from pyrogram.types import (
 from config import Config
 from helper import (
     Cryptic, format_size, escape_markdown, small_caps,
-    check_fsub, check_owner, check_user_bandwidth_limit,
-    should_warn_user_bw, format_uptime,
+    check_fsub, check_owner,
+    check_user_bandwidth_limit,
+    should_warn_user_bw,
+    should_warn_global_bw,
+    is_privileged_user_async,
+    format_uptime,
 )
 from database import db
 
@@ -34,6 +38,27 @@ async def check_access(user_id: int) -> bool:
     return await db.is_sudo_user(str(user_id))
 
 
+# ── Role helpers ──────────────────────────────────────────────────────────────
+
+async def get_user_role(user_id: int) -> str:
+    """Return 'owner', 'sudo', or 'user'."""
+    if user_id in Config.OWNER_ID:
+        return "owner"
+    if await db.is_sudo_user(str(user_id)):
+        return "sudo"
+    return "user"
+
+
+def _role_badge(role: str) -> str:
+    if role == "owner":
+        return "👑 ᴏᴡɴᴇʀ"
+    if role == "sudo":
+        return "🔑 ꜱᴜᴅᴏ"
+    return "👤 ᴜꜱᴇʀ"
+
+
+# ── File Upload Handler ───────────────────────────────────────────────────────
+
 @Client.on_message(
     (filters.document | filters.video | filters.audio | filters.photo) & filters.private,
     group=0,
@@ -47,7 +72,8 @@ async def file_handler(client: Client, message: Message):
             return
 
     # ── Ban check ─────────────────────────────────────────────────────────
-    if user_id not in Config.OWNER_ID and not await db.is_sudo_user(str(user_id)):
+    is_privileged = await is_privileged_user_async(db, user_id)
+    if not is_privileged:
         if await db.is_banned(str(user_id)):
             ban_info = await db.get_ban_info(str(user_id))
             reason   = (ban_info or {}).get("reason", "ᴜɴꜱᴘᴇᴄɪꜰɪᴇᴅ")
@@ -72,7 +98,7 @@ async def file_handler(client: Client, message: Message):
         )
         return
 
-    # ── Global bandwidth check ────────────────────────────────────────────
+    # ── Global bandwidth check (applies to all) ───────────────────────────
     if Config.get("bandwidth_mode", True):
         cycle     = await db.get_global_bw_cycle()
         max_bw    = Config.get("max_bandwidth", 107374182400)
@@ -89,18 +115,21 @@ async def file_handler(client: Client, message: Message):
             )
             return
 
-    # ── Per-user bandwidth check (skip for owner/sudo) ────────────────────
-    if user_id not in Config.OWNER_ID and not await db.is_sudo_user(str(user_id)):
+    # ── Per-user bandwidth check (SKIPPED for owner/sudo) ────────────────
+    if not is_privileged:
         allowed, ubw_stats = await check_user_bandwidth_limit(db, user_id)
         if not allowed:
             days_r = ubw_stats.get("days_remaining", "?")
+            used   = format_size(ubw_stats.get("used", 0))
+            limit  = format_size(ubw_stats.get("limit", 0))
             await client.send_message(
                 chat_id=message.chat.id,
                 text=(
-                    f"❌ **{small_caps('your monthly bandwidth limit is reached')}!**\n\n"
-                    f"📊 **{small_caps('used')}:** `{format_size(ubw_stats.get('used', 0))}`\n"
-                    f"📶 **{small_caps('limit')}:** `{format_size(ubw_stats.get('limit', 0))}`\n"
-                    f"🔄 **{small_caps('resets in')}:** `{days_r}` ᴅᴀʏꜱ"
+                    f"⛔ **{small_caps('monthly bandwidth limit reached')}**\n\n"
+                    f"📊 **{small_caps('used')}:** `{used}` / `{limit}`\n"
+                    f"🔄 **{small_caps('resets in')}:** `{days_r}` ᴅᴀʏꜱ\n\n"
+                    "ꜱᴛʀᴇᴀᴍɪɴɢ ᴀɴᴅ ᴅᴏᴡɴʟᴏᴀᴅꜱ ᴀʀᴇ ᴛᴇᴍᴘᴏʀᴀʀɪʟʏ ʙʟᴏᴄᴋᴇᴅ.\n"
+                    "ᴄᴏɴᴛᴀᴄᴛ ᴀɴ ᴀᴅᴍɪɴ ᴛᴏ ʀᴇꜱᴇᴛ ʏᴏᴜʀ ʟɪᴍɪᴛ ᴇᴀʀʟʏ."
                 ),
                 reply_to_message_id=message.id,
                 disable_web_page_preview=True,
@@ -245,11 +274,16 @@ async def file_handler(client: Client, message: Message):
     safe_name = escape_markdown(file_name)
     fmt_size  = format_size(file_size)
 
+    # Role badge for display
+    role       = await get_user_role(user_id)
+    role_badge = _role_badge(role)
+
     text = (
         f"✅ **{small_caps('file successfully processed')}!**\n\n"
         f"📂 **{small_caps('file name')}:** `{safe_name}`\n"
         f"💾 **{small_caps('file size')}:** `{fmt_size}`\n"
         f"📊 **{small_caps('file type')}:** `{file_type}`\n"
+        f"🎭 **{small_caps('role')}:** {role_badge}\n"
     )
     if is_streamable:
         text += (
@@ -264,27 +298,60 @@ async def file_handler(client: Client, message: Message):
         reply_markup=InlineKeyboardMarkup(buttons),
     )
 
-    # ── Per-user bandwidth warning (fire-and-forget, never blocks) ────────
-    if user_id not in Config.OWNER_ID and not await db.is_sudo_user(str(user_id)):
+    # ── Bandwidth warnings (fire-and-forget, one-shot per threshold) ──────
+    # Only for normal users
+    if not is_privileged:
         try:
-            if await should_warn_user_bw(db, user_id):
+            should_warn, bracket = await should_warn_user_bw(db, user_id)
+            if should_warn:
                 stats = await db.get_user_bw(str(user_id))
                 pct   = stats.get("pct", 0)
                 days  = stats.get("days_remaining", "?")
+                used  = format_size(stats.get("used", 0))
+                limit = format_size(stats.get("limit", 0))
+                # Mark warning sent BEFORE sending (avoid duplicate on retry)
+                await db.mark_user_bw_warning_sent(str(user_id), bracket)
                 await client.send_message(
                     chat_id=message.chat.id,
                     text=(
                         f"⚠️ **{small_caps('bandwidth warning')}**\n\n"
-                        f"ʏᴏᴜ ʜᴀᴠᴇ ᴜꜱᴇᴅ **{pct:.1f}%** ᴏꜰ ʏᴏᴜʀ ᴍᴏɴᴛʜʟʏ ᴅᴏᴡɴʟᴏᴀᴅ ᴀʟʟᴏᴡᴀɴᴄᴇ.\n"
-                        f"🔄 ʀᴇꜱᴇᴛꜱ ɪɴ `{days}` ᴅᴀʏꜱ.\n\n"
-                        f"📊 **{small_caps('used')}:** `{format_size(stats.get('used', 0))}`\n"
-                        f"📶 **{small_caps('limit')}:** `{format_size(stats.get('limit', 0))}`"
+                        f"ʏᴏᴜ'ᴠᴇ ᴜꜱᴇᴅ **{pct:.1f}%** ᴏꜰ ʏᴏᴜʀ ᴍᴏɴᴛʜʟʏ ᴀʟʟᴏᴡᴀɴᴄᴇ.\n\n"
+                        f"📊 **{small_caps('used')}:** `{used}` / `{limit}`\n"
+                        f"🔄 **{small_caps('resets in')}:** `{days}` ᴅᴀʏꜱ\n\n"
+                        "ɪꜰ ʏᴏᴜ ᴇxᴄᴇᴇᴅ ʏᴏᴜʀ ʟɪᴍɪᴛ, ꜱᴛʀᴇᴀᴍɪɴɢ ᴀɴᴅ ᴅᴏᴡɴʟᴏᴀᴅꜱ ᴡɪʟʟ ʙᴇ ᴛᴇᴍᴘᴏʀᴀʀɪʟʏ ʙʟᴏᴄᴋᴇᴅ."
                     ),
                     disable_web_page_preview=True,
                 )
         except Exception:
             pass
 
+    # ── Global bandwidth warning (owners only, one-shot) ─────────────────
+    try:
+        should_warn_g, g_bracket = await should_warn_global_bw(db)
+        if should_warn_g:
+            cycle = await db.get_global_bw_cycle()
+            days_r = cycle.get("days_remaining", "?")
+            g_pct  = cycle.get("pct", 0)
+            g_used = format_size(cycle.get("used", 0))
+            g_lim  = format_size(cycle.get("limit", 0))
+            await db.mark_global_bw_warning_sent(g_bracket)
+            for owner_id in Config.OWNER_ID:
+                try:
+                    await client.send_message(
+                        owner_id,
+                        f"⚠️ **{small_caps('global bandwidth warning')}**\n\n"
+                        f"ɢʟᴏʙᴀʟ ʙᴀɴᴅᴡɪᴅᴛʜ ɪꜱ ᴀᴛ **{g_pct:.1f}%** ᴏꜰ ᴍᴏɴᴛʜʟʏ ʟɪᴍɪᴛ!\n\n"
+                        f"📊 **{small_caps('used')}:** `{g_used}` / `{g_lim}`\n"
+                        f"🔄 **{small_caps('resets in')}:** `{days_r}` ᴅᴀʏꜱ\n\n"
+                        "ᴄᴏɴꜱɪᴅᴇʀ ɪɴᴄʀᴇᴀꜱɪɴɢ ᴛʜᴇ ʟɪᴍɪᴛ ᴏʀ ᴡᴀɪᴛɪɴɢ ꜰᴏʀ ᴛʜᴇ ʀᴇꜱᴇᴛ.",
+                    )
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+
+# ── /files command ────────────────────────────────────────────────────────────
 
 @Client.on_message(filters.command("files") & filters.private, group=0)
 async def files_command(client: Client, message: Message):
@@ -377,14 +444,17 @@ async def _build_user_files_markup(
     file_list = []
     async for x in user_files_cur:
         name = x.get("file_name", "Unknown")
-        if len(name) > 30:
-            name = name[:27] + "…"
+        if len(name) > 28:
+            name = name[:25] + "…"
+        ftype = x.get("file_type", "document")
+        # Icon per type
+        icon = {"video": "🎬", "audio": "🎵", "image": "🖼️", "document": "📄"}.get(ftype, "📄")
         cb = (
             f"ownview_{x['message_id']}_{user_id}"
             if owner_view
             else f"myfile_{x['_id']}_{page}"
         )
-        file_list.append([InlineKeyboardButton(f"📄 {name}", callback_data=cb)])
+        file_list.append([InlineKeyboardButton(f"{icon} {name}", callback_data=cb)])
 
     total_pages = math.ceil(total_files / PAGE_SIZE) if total_files else 1
 
@@ -419,34 +489,38 @@ async def _build_user_files_markup(
     if not file_list or (len(file_list) == 1 and file_list[0][0].callback_data == "N/A"):
         file_list = [[InlineKeyboardButton("ᴇᴍᴘᴛʏ", callback_data="N/A")]]
 
-    file_list.append([InlineKeyboardButton("ᴄʟᴏsᴇ", callback_data="close")])
+    file_list.append([InlineKeyboardButton("✖️ ᴄʟᴏꜱᴇ", callback_data="close")])
 
     markup = InlineKeyboardMarkup(file_list)
 
     if owner_view:
         caption = (
             f"📂 **{small_caps('files for user')}** `{user_id}`\n"
-            f"📊 **{small_caps('total')}:** `{total_files}` "
-            f"| **{small_caps('page')}:** `{page}/{total_pages}`\n\n"
-            "ᴄʟɪᴄᴋ ᴀ ꜰɪʟᴇ ᴛᴏ ᴠɪᴇᴡ ᴏʀ ʀᴇᴠᴏᴋᴇ ɪᴛ:"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"📊 **{small_caps('total')}:** `{total_files}` files  "
+            f"| 📄 **{small_caps('page')}:** `{page}/{total_pages}`\n\n"
+            "ᴄʟɪᴄᴋ ᴀ ꜰɪʟᴇ ᴛᴏ ᴠɪᴇᴡ, ꜱʜᴀʀᴇ, ᴏʀ ʀᴇᴠᴏᴋᴇ ɪᴛ:"
         ) if total_files else (
             f"📂 **{small_caps('files for user')}** `{user_id}`\n\n"
             "ᴛʜɪꜱ ᴜꜱᴇʀ ʜᴀꜱ ɴᴏ ꜰɪʟᴇꜱ ʏᴇᴛ."
         )
     else:
         caption = (
-            f"📂 **{small_caps('your files')}**\n"
-            f"📊 **{small_caps('total')}:** `{total_files}` "
-            f"| **{small_caps('page')}:** `{page}/{total_pages}`\n\n"
-            "ᴄʟɪᴄᴋ ᴏɴ ᴀɴʏ ꜰɪʟᴇ ᴛᴏ ᴠɪᴇᴡ ᴅᴇᴛᴀɪʟꜱ:"
+            f"📂 **{small_caps('my files')}**\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"📊 **{small_caps('total')}:** `{total_files}` files  "
+            f"| 📄 **{small_caps('page')}:** `{page}/{total_pages}`\n\n"
+            "✨ ᴛᴀᴘ ᴀɴʏ ꜰɪʟᴇ ᴛᴏ ᴠɪᴇᴡ ᴅᴇᴛᴀɪʟꜱ ᴀɴᴅ ꜱʜᴀʀᴇ ɪᴛ:"
         ) if total_files else (
-            f"📂 **{small_caps('your files')}**\n\n"
-            "ʏᴏᴜ ᴅᴏɴ'ᴛ ʜᴀᴠᴇ ᴀɴʏ ꜰɪʟᴇꜱ ʏᴇᴛ. "
+            f"📂 **{small_caps('my files')}**\n\n"
+            "ʏᴏᴜ ᴅᴏɴ'ᴛ ʜᴀᴠᴇ ᴀɴʏ ꜰɪʟᴇꜱ ʏᴇᴛ.\n"
             "ꜱᴇɴᴅ ᴍᴇ ᴀ ꜰɪʟᴇ ᴛᴏ ɢᴇᴛ ꜱᴛᴀʀᴛᴇᴅ!"
         )
 
     return markup, caption
 
+
+# ── File detail pages ─────────────────────────────────────────────────────────
 
 @Client.on_callback_query(filters.regex(r"^userfiles_\d+$"), group=0)
 async def cb_user_files_page(client: Client, callback: CallbackQuery):
@@ -509,6 +583,11 @@ async def cb_user_file_detail(client: Client, callback: CallbackQuery):
 
     safe_name      = escape_markdown(file_data["file_name"])
     formatted_size = format_size(file_data["file_size"])
+    uploaded_date  = file_data.get("created_at")
+    date_str       = uploaded_date.strftime("%Y-%m-%d") if uploaded_date else "N/A"
+
+    # File type icon
+    type_icon = {"video": "🎬", "audio": "🎵", "image": "🖼️", "document": "📄"}.get(file_type, "📄")
 
     link_buttons = []
     if is_streamable:
@@ -526,16 +605,23 @@ async def cb_user_file_detail(client: Client, callback: CallbackQuery):
             InlineKeyboardButton(f"📩 {small_caps('get file')}", callback_data=f"getfile_{file_hash}"),
             InlineKeyboardButton(f"🔁 {small_caps('share')}",    switch_inline_query=f"file_{file_hash}"),
         ],
+        [
+            InlineKeyboardButton(f"👤 {small_caps('share to user')}", callback_data=f"sharetouser_{file_hash}"),
+        ],
         [InlineKeyboardButton(f"🗑️ {small_caps('revoke')}",  callback_data=f"revoke_{file_hash}_{back_page}")],
         [InlineKeyboardButton(f"⬅️ {small_caps('back')}",    callback_data=f"userfiles_{back_page}")],
     ]
 
     text = (
-        f"✅ **{small_caps('file details')}**\n\n"
-        f"📂 **{small_caps('name')}:** `{safe_name}`\n"
+        f"✨ **{small_caps('file details')}**\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"{type_icon} **{small_caps('name')}:** `{safe_name}`\n"
         f"💾 **{small_caps('size')}:** `{formatted_size}`\n"
-        f"📊 **{small_caps('type')}:** `{file_data['file_type']}`\n"
-        f"📅 **{small_caps('uploaded')}:** `{file_data['created_at'].strftime('%Y-%m-%d')}`"
+        f"🏷️ **{small_caps('type')}:** `{file_type}`\n"
+        f"📅 **{small_caps('uploaded')}:** `{date_str}`\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"🔗 **{small_caps('stream')}:** `{stream_link}`\n"
+        f"📥 **{small_caps('download')}:** `{download_link}`"
     )
     await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(buttons))
     await callback.answer()
@@ -575,6 +661,9 @@ async def cb_owner_file_detail(client: Client, callback: CallbackQuery):
 
     safe_name      = escape_markdown(file_data["file_name"])
     formatted_size = format_size(file_data["file_size"])
+    uploaded_date  = file_data.get("created_at")
+    date_str       = uploaded_date.strftime("%Y-%m-%d") if uploaded_date else "N/A"
+    type_icon      = {"video": "🎬", "audio": "🎵", "image": "🖼️", "document": "📄"}.get(file_type, "📄")
 
     link_buttons = []
     if is_streamable:
@@ -589,7 +678,11 @@ async def cb_owner_file_detail(client: Client, callback: CallbackQuery):
 
     buttons = link_buttons + [
         [
-            InlineKeyboardButton(f"💬 {small_caps('telegram')}", url=telegram_link),
+            InlineKeyboardButton(f"💬 {small_caps('telegram link')}", url=telegram_link),
+            InlineKeyboardButton(f"🔁 {small_caps('share')}",         switch_inline_query=f"file_{file_hash}"),
+        ],
+        [
+            InlineKeyboardButton(f"👤 {small_caps('share to user')}", callback_data=f"sharetouser_{file_hash}"),
         ],
         [InlineKeyboardButton(
             f"🗑️ {small_caps('revoke this file')}",
@@ -602,15 +695,158 @@ async def cb_owner_file_detail(client: Client, callback: CallbackQuery):
     ]
 
     text = (
-        f"✅ **{small_caps('file details')}** *(owner view)*\n\n"
-        f"📂 **{small_caps('name')}:** `{safe_name}`\n"
+        f"✨ **{small_caps('file details')}** *(owner view)*\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"{type_icon} **{small_caps('name')}:** `{safe_name}`\n"
         f"💾 **{small_caps('size')}:** `{formatted_size}`\n"
-        f"📊 **{small_caps('type')}:** `{file_data['file_type']}`\n"
-        f"👤 **{small_caps('owner')}:** `{file_data.get('user_id', 'N/A')}`\n"
-        f"📅 **{small_caps('uploaded')}:** `{file_data['created_at'].strftime('%Y-%m-%d')}`"
+        f"🏷️ **{small_caps('type')}:** `{file_type}`\n"
+        f"👤 **{small_caps('owner id')}:** `{file_data.get('user_id', 'N/A')}`\n"
+        f"📅 **{small_caps('uploaded')}:** `{date_str}`\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"🔗 **{small_caps('stream')}:** `{stream_link}`"
     )
     await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(buttons))
     await callback.answer()
+
+
+# ── Share to specific user (inline search) ────────────────────────────────────
+
+@Client.on_callback_query(filters.regex(r"^sharetouser_"), group=0)
+async def cb_share_to_user(client: Client, callback: CallbackQuery):
+    """Show inline search UI to share file with a specific user."""
+    file_hash = callback.data[len("sharetouser_"):]
+    file_data = await db.get_file_by_hash(file_hash)
+    if not file_data:
+        await callback.answer("❌ ꜰɪʟᴇ ɴᴏᴛ ꜰᴏᴜɴᴅ", show_alert=True)
+        return
+
+    safe_name = escape_markdown(file_data["file_name"])
+    await callback.answer()
+    await client.send_message(
+        chat_id=callback.from_user.id,
+        text=(
+            f"🔁 **{small_caps('share file')}**\n\n"
+            f"📂 **{small_caps('file')}:** `{safe_name}`\n\n"
+            f"ᴛᴏ ꜱʜᴀʀᴇ ᴡɪᴛʜ ᴀ ꜱᴘᴇᴄɪꜰɪᴄ ᴜꜱᴇʀ, ꜱᴇɴᴅ ᴛʜᴇɪʀ **ᴜꜱᴇʀ ɪᴅ** ᴏʀ **@ᴜꜱᴇʀɴᴀᴍᴇ** ʙᴇʟᴏᴡ:\n\n"
+            f"_ᴇxᴀᴍᴘʟᴇ: `123456789` ᴏʀ `@ᴜꜱᴇʀɴᴀᴍᴇ`_\n\n"
+            f"💡 ꜰᴏʀ ɪɴꜱᴛᴀɴᴛ ꜱʜᴀʀᴇ ᴛᴏ ᴀɴʏᴏɴᴇ, ᴜꜱᴇ ᴛʜᴇ **🔁 ꜱʜᴀʀᴇ** ʙᴜᴛᴛᴏɴ ɪɴꜱᴛᴇᴀᴅ."
+        ),
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton(f"❌ {small_caps('cancel')}", callback_data=f"shareusercancel_{file_hash}")],
+        ]),
+    )
+    # Store pending share context in admin._pending pattern
+    from FLiX.admin import _pending
+    import asyncio
+    loop = asyncio.get_event_loop()
+    future = loop.create_future()
+    _pending[callback.from_user.id] = future
+
+    try:
+        reply_msg = await asyncio.wait_for(future, timeout=60)
+        target_input = (reply_msg.text or "").strip() if reply_msg else None
+    except asyncio.TimeoutError:
+        target_input = None
+
+    _pending.pop(callback.from_user.id, None)
+
+    if not target_input:
+        try:
+            await client.send_message(
+                chat_id=callback.from_user.id,
+                text=f"❌ **{small_caps('share cancelled or timed out')}**",
+            )
+        except Exception:
+            pass
+        return
+
+    # Try to resolve user
+    try:
+        if target_input.lstrip("-").isdigit():
+            target_user = await client.get_users(int(target_input))
+        elif target_input.startswith("@"):
+            target_user = await client.get_users(target_input)
+        else:
+            target_user = await client.get_users(target_input)
+    except Exception:
+        try:
+            await client.send_message(
+                chat_id=callback.from_user.id,
+                text=(
+                    f"❌ **{small_caps('user not found')}**\n\n"
+                    f"ᴄᴏᴜʟᴅ ɴᴏᴛ ꜰɪɴᴅ ᴜꜱᴇʀ: `{target_input}`\n"
+                    "ᴍᴀᴋᴇ ꜱᴜʀᴇ ᴛʜᴇ ᴜꜱᴇʀ ʜᴀꜱ ꜱᴛᴀʀᴛᴇᴅ ᴛʜᴇ ʙᴏᴛ."
+                ),
+            )
+        except Exception:
+            pass
+        return
+
+    # Build the share message
+    base_url      = Config.URL or f"http://localhost:{Config.PORT}"
+    stream_link   = f"{base_url}/stream/{file_hash}"
+    download_link = f"{base_url}/dl/{file_hash}"
+    is_streamable = file_data.get("file_type", "document") in STREAMABLE_TYPES
+    safe_name     = escape_markdown(file_data["file_name"])
+    fmt_size      = format_size(file_data["file_size"])
+    sender_name   = callback.from_user.first_name or "Someone"
+
+    btn_rows = []
+    if is_streamable:
+        btn_rows.append([
+            InlineKeyboardButton(f"🎬 {small_caps('stream')}",   url=stream_link),
+            InlineKeyboardButton(f"📥 {small_caps('download')}", url=download_link),
+        ])
+    else:
+        btn_rows.append([InlineKeyboardButton(f"📥 {small_caps('download')}", url=download_link)])
+
+    share_text = (
+        f"🎁 **{small_caps('file shared with you')}!**\n\n"
+        f"📂 **{small_caps('name')}:** `{safe_name}`\n"
+        f"💾 **{small_caps('size')}:** `{fmt_size}`\n"
+        f"📊 **{small_caps('type')}:** `{file_data.get('file_type', 'document')}`\n\n"
+        f"👤 **{small_caps('shared by')}:** [{sender_name}](tg://user?id={callback.from_user.id})\n"
+    )
+    if is_streamable:
+        share_text += f"\n🔗 **{small_caps('stream link')}:**\n`{stream_link}`"
+    else:
+        share_text += f"\n🔗 **{small_caps('download link')}:**\n`{download_link}`"
+
+    try:
+        await client.send_message(
+            chat_id=target_user.id,
+            text=share_text,
+            reply_markup=InlineKeyboardMarkup(btn_rows),
+            disable_web_page_preview=True,
+        )
+        await client.send_message(
+            chat_id=callback.from_user.id,
+            text=(
+                f"✅ **{small_caps('file shared successfully')}!**\n\n"
+                f"📂 **{small_caps('file')}:** `{safe_name}`\n"
+                f"👤 **{small_caps('sent to')}:** [{target_user.first_name}](tg://user?id={target_user.id})"
+            ),
+            disable_web_page_preview=True,
+        )
+    except Exception as exc:
+        await client.send_message(
+            chat_id=callback.from_user.id,
+            text=(
+                f"❌ **{small_caps('could not send file')}**\n\n"
+                f"ᴛʜᴇ ᴜꜱᴇʀ ᴍᴀʏ ɴᴏᴛ ʜᴀᴠᴇ ꜱᴛᴀʀᴛᴇᴅ ᴛʜᴇ ʙᴏᴛ.\n`{exc}`"
+            ),
+        )
+
+
+@Client.on_callback_query(filters.regex(r"^shareusercancel_"), group=0)
+async def cb_share_user_cancel(client: Client, callback: CallbackQuery):
+    await callback.answer(f"❌ {small_caps('share cancelled')}", show_alert=False)
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+    from FLiX.admin import _pending
+    _pending.pop(callback.from_user.id, None)
 
 
 @Client.on_callback_query(filters.regex(r"^ownrevoke_(?!yes_|no_)"), group=0)
@@ -717,14 +953,8 @@ async def cb_owner_back(client: Client, callback: CallbackQuery):
     await callback.answer()
 
 
-# NOTE: The /revoke command (admin.py) also routes to this handler via the
-#       shared callback_data prefix "revoke_<file_hash>".  Both the inline
-#       Revoke button and the /revoke command emit the same pattern so
-#       confirmation and execution are handled in one place.
 @Client.on_callback_query(filters.regex(r"^revoke_(?!yes_|no_)"), group=0)
 async def cb_revoke_confirm(client: Client, callback: CallbackQuery):
-    # Format (from file detail): revoke_<file_hash>_<back_page>
-    # Format (from /revoke cmd): revoke_<file_hash>   (no back_page)
     raw       = callback.data[len("revoke_"):]
     parts     = raw.split("_", 1)
     file_hash = parts[0]
@@ -754,7 +984,6 @@ async def cb_revoke_confirm(client: Client, callback: CallbackQuery):
 
 @Client.on_callback_query(filters.regex(r"^revoke_yes_"), group=0)
 async def cb_revoke_yes(client: Client, callback: CallbackQuery):
-    # Format: revoke_yes_<file_hash>_<back_page>
     raw       = callback.data[len("revoke_yes_"):]
     parts     = raw.split("_", 1)
     file_hash = parts[0]
@@ -868,7 +1097,6 @@ async def inline_query_handler(client: Client, inline_query):
     fmt_size      = format_size(file_data["file_size"])
     tg_file_id    = file_data.get("telegram_file_id", "")
 
-    # Message layout matches the /start file_<hash> deep-link response.
     text = (
         f"✅ **{small_caps('file found')}!**\n\n"
         f"📂 **{small_caps('name')}:** `{safe_name}`\n"

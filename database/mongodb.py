@@ -293,11 +293,12 @@ class Database:
 
         # Create new cycle
         new_cycle = {
-            "cycle_start":  now,
-            "cycle_end":    now + timedelta(days=30),
-            "total_bytes":  0,
-            "active":       True,
-            "created_at":   now,
+            "cycle_start":       now,
+            "cycle_end":         now + timedelta(days=30),
+            "total_bytes":       0,
+            "active":            True,
+            "created_at":        now,
+            "warned_thresholds": [],
         }
         await self.global_bw.insert_one(new_cycle)
         fresh = await self.global_bw.find_one({"active": True})
@@ -361,10 +362,12 @@ class Database:
                 {"user_id": user_id},
                 {
                     "$set": {
-                        "cycle_start": now,
-                        "cycle_end":   now + timedelta(days=30),
-                        "used_bytes":  0,
-                        "last_reset":  now,
+                        "cycle_start":       now,
+                        "cycle_end":         now + timedelta(days=30),
+                        "used_bytes":        0,
+                        "last_reset":        now,
+                        "warned_thresholds": [],
+                        "exceeded_notified": False,
                     }
                 },
             )
@@ -443,10 +446,12 @@ class Database:
                 {"user_id": user_id},
                 {
                     "$set": {
-                        "cycle_start": now,
-                        "cycle_end":   now + timedelta(days=30),
-                        "used_bytes":  0,
-                        "last_reset":  now,
+                        "cycle_start":       now,
+                        "cycle_end":         now + timedelta(days=30),
+                        "used_bytes":        0,
+                        "last_reset":        now,
+                        "warned_thresholds": [],
+                        "exceeded_notified": False,
                     }
                 },
                 upsert=True,
@@ -674,6 +679,86 @@ class Database:
     # ══════════════════════════════════════════════════════════════
     # CLOSE
     # ══════════════════════════════════════════════════════════════
+
+    # ══════════════════════════════════════════════════════════════
+    # BANDWIDTH WARNING TRACKING (one-shot per threshold)
+    # ══════════════════════════════════════════════════════════════
+
+    async def has_sent_user_bw_warning(self, user_id: str, pct_threshold: int) -> bool:
+        """Return True if we already sent this user a warning at this threshold level."""
+        try:
+            doc = await self.user_bw.find_one({"user_id": user_id})
+            if not doc:
+                return False
+            sent = doc.get("warned_thresholds", [])
+            return pct_threshold in sent
+        except Exception as e:
+            logger.error("has_sent_user_bw_warning error: %s", e)
+            return False
+
+    async def mark_user_bw_warning_sent(self, user_id: str, pct_threshold: int) -> bool:
+        """Record that we sent a bandwidth warning at this threshold so we don't repeat."""
+        try:
+            await self.user_bw.update_one(
+                {"user_id": user_id},
+                {"$addToSet": {"warned_thresholds": pct_threshold}},
+                upsert=True,
+            )
+            return True
+        except Exception as e:
+            logger.error("mark_user_bw_warning_sent error: %s", e)
+            return False
+
+    async def has_sent_global_bw_warning(self, pct_threshold: int) -> bool:
+        """Return True if we already sent owners a global bw warning at this threshold."""
+        try:
+            cycle = await self.global_bw.find_one({"active": True})
+            if not cycle:
+                return False
+            sent = cycle.get("warned_thresholds", [])
+            return pct_threshold in sent
+        except Exception as e:
+            logger.error("has_sent_global_bw_warning error: %s", e)
+            return False
+
+    async def mark_global_bw_warning_sent(self, pct_threshold: int) -> bool:
+        """Record that we sent owners a global bw warning at this threshold."""
+        try:
+            cycle = await self.global_bw.find_one({"active": True})
+            if not cycle:
+                return False
+            await self.global_bw.update_one(
+                {"_id": cycle["_id"]},
+                {"$addToSet": {"warned_thresholds": pct_threshold}},
+            )
+            return True
+        except Exception as e:
+            logger.error("mark_global_bw_warning_sent error: %s", e)
+            return False
+
+    async def has_sent_user_exceeded_warning(self, user_id: str) -> bool:
+        """Return True if we already notified user about bandwidth exceeded in this cycle."""
+        try:
+            doc = await self.user_bw.find_one({"user_id": user_id})
+            if not doc:
+                return False
+            return doc.get("exceeded_notified", False)
+        except Exception as e:
+            logger.error("has_sent_user_exceeded_warning error: %s", e)
+            return False
+
+    async def mark_user_exceeded_notified(self, user_id: str) -> bool:
+        """Record that we notified the user about bandwidth exceeded."""
+        try:
+            await self.user_bw.update_one(
+                {"user_id": user_id},
+                {"$set": {"exceeded_notified": True}},
+                upsert=True,
+            )
+            return True
+        except Exception as e:
+            logger.error("mark_user_exceeded_notified error: %s", e)
+            return False
 
     async def close(self):
         self.client.close()

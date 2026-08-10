@@ -15,6 +15,8 @@ from .bandwidth import (
     should_warn_global_bw,
     should_warn_user_bw,
     track_bandwidth_usage,
+    is_privileged_user,
+    is_privileged_user_async,
 )
 
 __all__ = [
@@ -32,4 +34,6 @@ __all__ = [
     "should_warn_global_bw",
     "should_warn_user_bw",
     "track_bandwidth_usage",
+    "is_privileged_user",
+    "is_privileged_user_async",
 ]

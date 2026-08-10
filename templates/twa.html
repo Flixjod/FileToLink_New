@@ -9,33 +9,36 @@
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <style>
-    /* ── Theme: auto-sync with Telegram theme ── */
     :root {
-      --tg-bg:             var(--tg-theme-bg-color, #0f0c29);
-      --tg-sec-bg:         var(--tg-theme-secondary-bg-color, #302b63);
-      --tg-text:           var(--tg-theme-text-color, #ffffff);
-      --tg-hint:           var(--tg-theme-hint-color, rgba(255,255,255,.55));
-      --tg-link:           var(--tg-theme-link-color, #667eea);
-      --tg-btn:            var(--tg-theme-button-color, #667eea);
-      --tg-btn-text:       var(--tg-theme-button-text-color, #ffffff);
-      --tg-destructive:    var(--tg-theme-destructive-text-color, #ff6b6b);
+      --tg-bg:          var(--tg-theme-bg-color, #0f0c29);
+      --tg-sec-bg:      var(--tg-theme-secondary-bg-color, #302b63);
+      --tg-text:        var(--tg-theme-text-color, #ffffff);
+      --tg-hint:        var(--tg-theme-hint-color, rgba(255,255,255,.55));
+      --tg-link:        var(--tg-theme-link-color, #667eea);
+      --tg-btn:         var(--tg-theme-button-color, #667eea);
+      --tg-btn-text:    var(--tg-theme-button-text-color, #ffffff);
+      --tg-destructive: var(--tg-theme-destructive-text-color, #ff6b6b);
 
-      --card-bg:           rgba(255,255,255,0.07);
-      --card-border:       rgba(255,255,255,.12);
-      --card-shadow:       0 8px 28px rgba(0,0,0,.28);
-      --text-primary:      var(--tg-text);
-      --text-secondary:    var(--tg-hint);
-      --accent:            var(--tg-btn);
-      --accent-glow:       rgba(102,126,234,.35);
-      --bar-bg:            rgba(255,255,255,.11);
-      --divider:           rgba(255,255,255,.08);
-      --badge-ok:          rgba(67,233,123,.15);
-      --badge-ok-c:        #43e97b;
-      --badge-err:         rgba(255,107,107,.15);
-      --badge-err-c:       #ff6b6b;
-      --badge-warn:        rgba(246,211,101,.15);
-      --badge-warn-c:      #f6d365;
-      --item-hover:        rgba(255,255,255,.06);
+      --card-bg:        rgba(255,255,255,0.07);
+      --card-border:    rgba(255,255,255,.12);
+      --card-shadow:    0 8px 28px rgba(0,0,0,.28);
+      --text-primary:   var(--tg-text);
+      --text-secondary: var(--tg-hint);
+      --accent:         var(--tg-btn);
+      --accent-glow:    rgba(102,126,234,.35);
+      --bar-bg:         rgba(255,255,255,.11);
+      --divider:        rgba(255,255,255,.08);
+      --badge-ok:       rgba(67,233,123,.15);
+      --badge-ok-c:     #43e97b;
+      --badge-err:      rgba(255,107,107,.15);
+      --badge-err-c:    #ff6b6b;
+      --badge-warn:     rgba(246,211,101,.15);
+      --badge-warn-c:   #f6d365;
+      --badge-sudo:     rgba(102,126,234,.18);
+      --badge-sudo-c:   #a78bfa;
+      --badge-owner:    rgba(246,174,45,.18);
+      --badge-owner-c:  #f6b73c;
+      --item-hover:     rgba(255,255,255,.06);
     }
 
     *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
@@ -50,81 +53,47 @@
       -webkit-tap-highlight-color: transparent;
     }
 
-    body {
-      display: flex;
-      flex-direction: column;
-      min-height: 100vh;
-    }
+    body { display:flex; flex-direction:column; min-height:100vh; }
 
     /* ── Nav Bar ── */
     .nav-bar {
-      display: flex;
-      align-items: center;
-      gap: 0;
+      display: flex; align-items: center; gap: 0;
       background: var(--tg-sec-bg);
       border-bottom: 1px solid var(--divider);
-      position: sticky;
-      top: 0;
-      z-index: 100;
+      position: sticky; top: 0; z-index: 100;
     }
     .nav-btn {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 3px;
-      padding: 10px 6px;
-      border: none;
-      background: transparent;
+      flex: 1; display: flex; flex-direction: column;
+      align-items: center; gap: 3px; padding: 10px 6px;
+      border: none; background: transparent;
       color: var(--text-secondary);
-      font-size: .58rem;
-      font-weight: 600;
+      font-size: .58rem; font-weight: 600;
       font-family: 'Poppins', sans-serif;
-      cursor: pointer;
-      transition: color .2s, background .2s;
-      letter-spacing: .02em;
-      text-transform: uppercase;
+      cursor: pointer; transition: color .2s, background .2s;
+      letter-spacing: .02em; text-transform: uppercase;
     }
     .nav-btn i { font-size: 1.15rem; }
-    .nav-btn.active {
-      color: var(--accent);
-    }
+    .nav-btn.active { color: var(--accent); }
     .nav-btn.active i { filter: drop-shadow(0 0 6px var(--accent-glow)); }
 
     /* ── Page System ── */
-    .page {
-      display: none;
-      flex: 1;
-      padding: 16px;
-      animation: pgIn .25s ease both;
-    }
-    .page.active { display: block; }
-    @keyframes pgIn {
-      from { opacity:0; transform:translateY(10px); }
-      to   { opacity:1; transform:translateY(0); }
-    }
+    .page { display:none; flex:1; padding:16px; animation: pgIn .25s ease both; }
+    .page.active { display:block; }
+    @keyframes pgIn { from{opacity:0;transform:translateY(10px);} to{opacity:1;transform:translateY(0);} }
 
     /* ── Section Header ── */
     .sec-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 14px;
+      display: flex; align-items: center;
+      justify-content: space-between; margin-bottom: 14px;
     }
     .sec-title {
-      font-size: 1.05rem;
-      font-weight: 800;
-      color: var(--text-primary);
-      display: flex;
-      align-items: center;
-      gap: 10px;
+      font-size: 1.05rem; font-weight: 800; color: var(--text-primary);
+      display: flex; align-items: center; gap: 10px;
     }
     .sec-title-icon {
-      width: 36px; height: 36px;
-      border-radius: 11px;
-      display: flex; align-items: center; justify-content: center;
-      font-size: .9rem; color: #fff;
-      flex-shrink: 0;
+      width:36px; height:36px; border-radius:11px;
+      display:flex; align-items:center; justify-content:center;
+      font-size:.9rem; color:#fff; flex-shrink:0;
     }
     .icon-files   { background: linear-gradient(135deg,#667eea,#764ba2); }
     .icon-bw      { background: linear-gradient(135deg,#4facfe,#00f2fe); }
@@ -132,370 +101,266 @@
 
     /* ── Loading Spinner ── */
     .loader {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 14px;
-      padding: 52px 0;
-      color: var(--text-secondary);
-      font-size: .84rem;
+      display:flex; flex-direction:column; align-items:center;
+      justify-content:center; gap:14px; padding:52px 0;
+      color:var(--text-secondary); font-size:.84rem;
     }
     .loader-ring {
-      width: 44px; height: 44px;
-      border-radius: 50%;
-      border: 3px solid var(--bar-bg);
-      border-top-color: var(--accent);
-      animation: spin .8s linear infinite;
+      width:44px; height:44px; border-radius:50%;
+      border:3px solid var(--bar-bg); border-top-color:var(--accent);
+      animation:spin .8s linear infinite;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    /* ── Error State ── */
-    .error-state {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 10px;
-      padding: 40px 0;
-      text-align: center;
-      color: var(--text-secondary);
+    /* ── Error / Empty State ── */
+    .error-state, .empty-state {
+      display:flex; flex-direction:column; align-items:center;
+      gap:10px; padding:40px 0; text-align:center; color:var(--text-secondary);
     }
-    .error-state i { font-size: 2.4rem; color: var(--badge-err-c); }
-    .error-state p { font-size: .84rem; line-height: 1.6; max-width: 280px; }
+    .error-state i { font-size:2.4rem; color:var(--badge-err-c); }
+    .error-state p, .empty-state p { font-size:.84rem; line-height:1.6; max-width:280px; }
+    .empty-state i { font-size:2.8rem; opacity:.35; }
 
-    /* ── Empty State ── */
-    .empty-state {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 10px;
-      padding: 48px 0;
-      text-align: center;
+    /* ── Role Badge ── */
+    .role-badge {
+      display:inline-flex; align-items:center; gap:5px;
+      padding:4px 12px; border-radius:999px; font-size:.72rem; font-weight:700;
     }
-    .empty-state i { font-size: 2.8rem; opacity: .35; }
-    .empty-state p { font-size: .84rem; color: var(--text-secondary); max-width: 260px; line-height: 1.6; }
-
-    /* ── Bandwidth Cards ── */
-    .bw-cards {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
-      margin-bottom: 16px;
+    .role-badge.owner {
+      background: var(--badge-owner); color: var(--badge-owner-c);
+      border:1px solid rgba(246,183,60,.25);
     }
-    @media (max-width: 360px) { .bw-cards { grid-template-columns: 1fr; } }
-
-    .bw-card {
-      background: var(--card-bg);
-      border: 1px solid var(--card-border);
-      border-radius: 18px;
-      padding: 16px;
-      position: relative;
-      overflow: hidden;
+    .role-badge.sudo {
+      background: var(--badge-sudo); color: var(--badge-sudo-c);
+      border:1px solid rgba(167,139,250,.25);
     }
-    .bw-card::before {
-      content: '';
-      position: absolute;
-      top: 0; left: 0; right: 0;
-      height: 3px;
-      border-radius: 18px 18px 0 0;
-    }
-    .bw-card.global::before { background: linear-gradient(90deg,#4facfe,#00f2fe); }
-    .bw-card.user::before   { background: linear-gradient(90deg,#667eea,#764ba2); }
-
-    .bw-card-lbl {
-      font-size: .64rem;
-      text-transform: uppercase;
-      letter-spacing: .08em;
-      color: var(--text-secondary);
-      font-weight: 600;
-      margin-bottom: 10px;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-    .bw-card-lbl i { font-size: .7rem; }
-
-    .bw-card-val {
-      font-size: 1.18rem;
-      font-weight: 800;
-      color: var(--text-primary);
-      margin-bottom: 2px;
-      font-family: 'JetBrains Mono', monospace;
+    .role-badge.user {
+      background: rgba(255,255,255,.08); color: var(--text-secondary);
+      border:1px solid var(--card-border);
     }
 
-    .bw-card-sub {
-      font-size: .7rem;
-      color: var(--text-secondary);
-      margin-bottom: 10px;
+    /* ── Blocked Banner ── */
+    .blocked-banner {
+      background: rgba(255,107,107,.12); border:1px solid rgba(255,107,107,.28);
+      border-radius:16px; padding:14px 18px;
+      display:flex; align-items:flex-start; gap:12px; margin-bottom:14px;
     }
+    .blocked-banner i { font-size:1.2rem; color:var(--badge-err-c); flex-shrink:0; margin-top:1px; }
+    .blocked-banner-text h4 { font-size:.86rem; font-weight:800; color:var(--badge-err-c); margin-bottom:3px; }
+    .blocked-banner-text p  { font-size:.76rem; color:var(--text-secondary); line-height:1.55; }
 
-    .mini-bar { height: 5px; background: var(--bar-bg); border-radius: 999px; overflow: hidden; margin-bottom: 6px; }
-    .mini-bar-fill { height: 100%; border-radius: 999px; transition: width .8s ease; }
-    .mini-bar-fill.global { background: linear-gradient(90deg,#4facfe,#00f2fe); }
-    .mini-bar-fill.user   { background: linear-gradient(90deg,#667eea,#a78bfa); }
-    .mini-bar-fill.warn   { background: linear-gradient(90deg,#f6d365,#fda085); }
-    .mini-bar-fill.crit   { background: linear-gradient(90deg,#ff6b6b,#ee0979); }
-
-    .bw-card-pct {
-      font-size: .72rem;
-      font-weight: 700;
-      color: #4facfe;
-    }
-    .bw-card-pct.user   { color: #a78bfa; }
-    .bw-card-pct.warn   { color: #f6d365; }
-    .bw-card-pct.crit   { color: #ff6b6b; }
-
-    /* Reset countdown */
-    .reset-chip {
-      display: inline-flex;
-      align-items: center;
-      gap: 5px;
-      background: rgba(79,172,254,.1);
-      border: 1px solid rgba(79,172,254,.2);
-      border-radius: 999px;
-      padding: 4px 10px;
-      font-size: .66rem;
-      font-weight: 700;
-      color: #4facfe;
-      font-family: 'JetBrains Mono', monospace;
-      margin-top: 6px;
-    }
-    .reset-chip i { animation: tickPulse 1s ease-in-out infinite; }
-    @keyframes tickPulse { 0%,100%{opacity:1;} 50%{opacity:.3;} }
-
-    /* ── User Profile Card ── */
-    .profile-card {
-      background: var(--card-bg);
-      border: 1px solid var(--card-border);
-      border-radius: 20px;
-      padding: 22px;
-      display: flex;
-      align-items: center;
-      gap: 16px;
-      margin-bottom: 16px;
-    }
-    .profile-avatar {
-      width: 60px; height: 60px;
-      border-radius: 50%;
-      background: linear-gradient(135deg,#667eea,#764ba2);
-      display: flex; align-items: center; justify-content: center;
-      font-size: 1.6rem; color: #fff;
-      flex-shrink: 0;
-      box-shadow: 0 6px 20px var(--accent-glow);
-    }
-    .profile-info { flex: 1; min-width: 0; }
-    .profile-name {
-      font-size: 1rem;
-      font-weight: 800;
-      color: var(--text-primary);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      margin-bottom: 3px;
-    }
-    .profile-id {
-      font-size: .74rem;
-      color: var(--text-secondary);
-      font-family: 'JetBrains Mono', monospace;
-    }
-
-    /* ── Info Rows ── */
-    .info-rows { margin-bottom: 16px; }
-    .info-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 12px 16px;
-      background: var(--card-bg);
-      border: 1px solid var(--card-border);
-      border-radius: 14px;
-      margin-bottom: 8px;
-    }
-    .ir-label {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      font-size: .83rem;
-      color: var(--text-secondary);
-      font-weight: 500;
-    }
-    .ir-icon {
-      width: 30px; height: 30px;
-      border-radius: 9px;
-      display: flex; align-items: center; justify-content: center;
-      font-size: .78rem;
-      flex-shrink: 0;
-    }
-    .ir-value {
-      font-size: .84rem;
-      font-weight: 700;
-      color: var(--text-primary);
-    }
-
-    /* ── File List ── */
-    .file-list { display: flex; flex-direction: column; gap: 10px; }
+    /* ── File Cards (Premium) ── */
+    .file-list { display:flex; flex-direction:column; gap:12px; }
 
     .file-card {
       background: var(--card-bg);
       border: 1px solid var(--card-border);
-      border-radius: 18px;
+      border-radius: 20px;
       padding: 14px 16px;
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      cursor: pointer;
-      transition: background .15s ease, transform .15s ease;
+      transition: background .15s ease, transform .15s ease, box-shadow .15s ease;
       -webkit-tap-highlight-color: transparent;
+      position: relative;
+      overflow: hidden;
     }
-    .file-card:active { background: var(--item-hover); transform: scale(.98); }
+    .file-card::before {
+      content: '';
+      position: absolute; top: 0; left: 0; right: 0; height: 2px;
+      border-radius: 20px 20px 0 0;
+    }
+    .file-card.ft-video::before  { background: linear-gradient(90deg,#667eea,#764ba2); }
+    .file-card.ft-audio::before  { background: linear-gradient(90deg,#43e97b,#38f9d7); }
+    .file-card.ft-image::before  { background: linear-gradient(90deg,#4facfe,#00f2fe); }
+    .file-card.ft-doc::before    { background: linear-gradient(90deg,#f6d365,#fda085); }
+
+    .file-card:active { background:var(--item-hover); transform:scale(.99); }
+
+    .file-card-top {
+      display: flex; align-items: center; gap: 13px;
+    }
 
     .file-icon {
-      width: 44px; height: 44px;
-      border-radius: 13px;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 1.1rem; color: #fff;
-      flex-shrink: 0;
+      width:46px; height:46px; border-radius:14px;
+      display:flex; align-items:center; justify-content:center;
+      font-size:1.15rem; color:#fff; flex-shrink:0;
     }
-    .fi-video  { background: linear-gradient(135deg,#667eea,#764ba2); }
-    .fi-audio  { background: linear-gradient(135deg,#43e97b,#38f9d7); }
-    .fi-doc    { background: linear-gradient(135deg,#f6d365,#fda085); }
-    .fi-img    { background: linear-gradient(135deg,#4facfe,#00f2fe); }
+    .fi-video  { background: linear-gradient(135deg,#667eea,#764ba2); box-shadow: 0 4px 14px rgba(102,126,234,.35); }
+    .fi-audio  { background: linear-gradient(135deg,#43e97b,#38f9d7); box-shadow: 0 4px 14px rgba(67,233,123,.3); }
+    .fi-doc    { background: linear-gradient(135deg,#f6d365,#fda085); box-shadow: 0 4px 14px rgba(246,211,101,.3); }
+    .fi-img    { background: linear-gradient(135deg,#4facfe,#00f2fe); box-shadow: 0 4px 14px rgba(79,172,254,.3); }
 
-    .file-info { flex: 1; min-width: 0; }
+    .file-info { flex:1; min-width:0; }
     .file-name {
-      font-size: .86rem;
-      font-weight: 700;
-      color: var(--text-primary);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      margin-bottom: 4px;
+      font-size:.88rem; font-weight:700; color:var(--text-primary);
+      white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-bottom:5px;
     }
     .file-meta {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-size: .7rem;
-      color: var(--text-secondary);
+      display:flex; align-items:center; gap:8px;
+      font-size:.69rem; color:var(--text-secondary);
     }
     .file-type-badge {
-      background: rgba(102,126,234,.15);
-      border: 1px solid rgba(102,126,234,.2);
-      border-radius: 999px;
-      padding: 2px 8px;
-      font-size: .62rem;
-      font-weight: 700;
-      color: #a78bfa;
-      text-transform: uppercase;
+      background:rgba(102,126,234,.15); border:1px solid rgba(102,126,234,.2);
+      border-radius:999px; padding:2px 8px; font-size:.62rem; font-weight:700;
+      color:#a78bfa; text-transform:uppercase;
     }
 
+    /* ── File Action Buttons ── */
     .file-actions {
-      display: flex;
-      gap: 6px;
-      flex-shrink: 0;
+      display: flex; gap: 7px; margin-top: 12px; flex-wrap: wrap;
     }
     .fa-btn {
-      width: 34px; height: 34px;
-      border-radius: 10px;
-      border: none;
+      flex: 1; min-width: 64px;
+      height: 34px; border-radius: 10px; border: none;
       display: flex; align-items: center; justify-content: center;
-      font-size: .8rem;
-      cursor: pointer;
-      transition: all .15s ease;
+      gap: 5px; font-size: .72rem; font-weight: 600;
+      cursor: pointer; transition: all .15s ease;
+      font-family: 'Poppins', sans-serif;
+      white-space: nowrap; padding: 0 10px;
     }
-    .fa-btn:active { transform: scale(.92); }
-    .fa-stream {
-      background: rgba(102,126,234,.18);
-      color: #a78bfa;
-    }
-    .fa-stream:hover { background: rgba(102,126,234,.28); }
-    .fa-dl {
-      background: rgba(67,233,123,.13);
-      color: #43e97b;
-    }
-    .fa-dl:hover { background: rgba(67,233,123,.2); }
+    .fa-btn:active { transform: scale(.93); }
+    .fa-stream { background:rgba(102,126,234,.18); color:#a78bfa; border:1px solid rgba(102,126,234,.2); }
+    .fa-stream:hover { background:rgba(102,126,234,.28); }
+    .fa-dl     { background:rgba(67,233,123,.13); color:#43e97b; border:1px solid rgba(67,233,123,.18); }
+    .fa-dl:hover { background:rgba(67,233,123,.22); }
+    .fa-share  { background:rgba(79,172,254,.13); color:#4facfe; border:1px solid rgba(79,172,254,.18); }
+    .fa-share:hover { background:rgba(79,172,254,.22); }
+    .fa-copy   { background:rgba(246,211,101,.1); color:#f6d365; border:1px solid rgba(246,211,101,.15); }
+    .fa-copy:hover { background:rgba(246,211,101,.18); }
 
-    /* ── Blocked Banner ── */
-    .blocked-banner {
-      background: rgba(255,107,107,.12);
-      border: 1px solid rgba(255,107,107,.28);
-      border-radius: 16px;
-      padding: 14px 18px;
-      display: flex;
-      align-items: flex-start;
-      gap: 12px;
-      margin-bottom: 14px;
+    /* ── Bandwidth Cards ── */
+    .bw-cards { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:16px; }
+    @media (max-width:360px) { .bw-cards { grid-template-columns:1fr; } }
+
+    .bw-card {
+      background:var(--card-bg); border:1px solid var(--card-border);
+      border-radius:18px; padding:16px; position:relative; overflow:hidden;
     }
-    .blocked-banner i {
-      font-size: 1.2rem;
-      color: var(--badge-err-c);
-      flex-shrink: 0;
-      margin-top: 1px;
+    .bw-card::before {
+      content:''; position:absolute; top:0; left:0; right:0; height:3px;
+      border-radius:18px 18px 0 0;
     }
-    .blocked-banner-text h4 {
-      font-size: .86rem;
-      font-weight: 800;
-      color: var(--badge-err-c);
-      margin-bottom: 3px;
+    .bw-card.global::before { background:linear-gradient(90deg,#4facfe,#00f2fe); }
+    .bw-card.user::before   { background:linear-gradient(90deg,#667eea,#764ba2); }
+
+    .bw-card-lbl { font-size:.64rem; text-transform:uppercase; letter-spacing:.08em; color:var(--text-secondary); font-weight:600; margin-bottom:10px; display:flex; align-items:center; gap:6px; }
+    .bw-card-lbl i { font-size:.7rem; }
+    .bw-card-val { font-size:1.18rem; font-weight:800; color:var(--text-primary); margin-bottom:2px; font-family:'JetBrains Mono',monospace; }
+    .bw-card-sub { font-size:.7rem; color:var(--text-secondary); margin-bottom:10px; }
+
+    .mini-bar { height:5px; background:var(--bar-bg); border-radius:999px; overflow:hidden; margin-bottom:6px; }
+    .mini-bar-fill { height:100%; border-radius:999px; transition:width .8s ease; }
+    .mini-bar-fill.global { background:linear-gradient(90deg,#4facfe,#00f2fe); }
+    .mini-bar-fill.user   { background:linear-gradient(90deg,#667eea,#a78bfa); }
+    .mini-bar-fill.warn   { background:linear-gradient(90deg,#f6d365,#fda085); }
+    .mini-bar-fill.crit   { background:linear-gradient(90deg,#ff6b6b,#ee0979); }
+
+    .bw-card-pct { font-size:.72rem; font-weight:700; color:#4facfe; }
+    .bw-card-pct.user   { color:#a78bfa; }
+    .bw-card-pct.warn   { color:#f6d365; }
+    .bw-card-pct.crit   { color:#ff6b6b; }
+
+    .reset-chip {
+      display:inline-flex; align-items:center; gap:5px;
+      background:rgba(79,172,254,.1); border:1px solid rgba(79,172,254,.2);
+      border-radius:999px; padding:4px 10px; font-size:.66rem; font-weight:700;
+      color:#4facfe; font-family:'JetBrains Mono',monospace; margin-top:6px;
     }
-    .blocked-banner-text p {
-      font-size: .76rem;
-      color: var(--text-secondary);
-      line-height: 1.55;
+    .reset-chip i { animation:tickPulse 1s ease-in-out infinite; }
+    @keyframes tickPulse { 0%,100%{opacity:1;} 50%{opacity:.3;} }
+
+    /* ── Profile Card ── */
+    .profile-card {
+      background:var(--card-bg); border:1px solid var(--card-border);
+      border-radius:20px; padding:22px; display:flex; align-items:center;
+      gap:16px; margin-bottom:16px; position:relative; overflow:hidden;
     }
+    .profile-card::before {
+      content:''; position:absolute; top:0; left:0; right:0; height:3px;
+      border-radius:20px 20px 0 0;
+      background:linear-gradient(90deg,#667eea,#43e97b,#4facfe);
+    }
+    .profile-avatar {
+      width:60px; height:60px; border-radius:50%;
+      background:linear-gradient(135deg,#667eea,#764ba2);
+      display:flex; align-items:center; justify-content:center;
+      font-size:1.6rem; color:#fff; flex-shrink:0;
+      box-shadow:0 6px 20px var(--accent-glow);
+    }
+    .profile-info { flex:1; min-width:0; }
+    .profile-name {
+      font-size:1rem; font-weight:800; color:var(--text-primary);
+      white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-bottom:3px;
+    }
+    .profile-id { font-size:.74rem; color:var(--text-secondary); font-family:'JetBrains Mono',monospace; margin-bottom:6px; }
+
+    /* ── Info Rows ── */
+    .info-rows { margin-bottom:16px; }
+    .info-row {
+      display:flex; justify-content:space-between; align-items:center;
+      padding:12px 16px; background:var(--card-bg);
+      border:1px solid var(--card-border); border-radius:14px; margin-bottom:8px;
+    }
+    .ir-label { display:flex; align-items:center; gap:10px; font-size:.83rem; color:var(--text-secondary); font-weight:500; }
+    .ir-icon { width:30px; height:30px; border-radius:9px; display:flex; align-items:center; justify-content:center; font-size:.78rem; flex-shrink:0; }
+    .ir-value { font-size:.84rem; font-weight:700; color:var(--text-primary); }
+
+    /* ── Privilege notice ── */
+    .privilege-notice {
+      background: linear-gradient(135deg,rgba(246,183,60,.12),rgba(102,126,234,.1));
+      border: 1px solid rgba(246,183,60,.25); border-radius:16px;
+      padding:14px 18px; display:flex; align-items:flex-start; gap:12px;
+      margin-bottom:14px;
+    }
+    .privilege-notice i { font-size:1.2rem; color:var(--badge-owner-c); flex-shrink:0; margin-top:1px; }
+    .privilege-notice-text h4 { font-size:.86rem; font-weight:800; color:var(--badge-owner-c); margin-bottom:3px; }
+    .privilege-notice-text p  { font-size:.76rem; color:var(--text-secondary); line-height:1.55; }
 
     /* ── Pagination ── */
-    .pagination {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 10px;
-      padding: 16px 0;
-    }
+    .pagination { display:flex; align-items:center; justify-content:center; gap:10px; padding:16px 0; }
     .pg-btn {
-      width: 38px; height: 38px;
-      border-radius: 11px;
-      border: 1px solid var(--card-border);
-      background: var(--card-bg);
-      color: var(--text-primary);
-      font-size: .82rem;
-      cursor: pointer;
-      display: flex; align-items: center; justify-content: center;
-      transition: all .15s ease;
+      width:38px; height:38px; border-radius:11px; border:1px solid var(--card-border);
+      background:var(--card-bg); color:var(--text-primary); font-size:.82rem;
+      cursor:pointer; display:flex; align-items:center; justify-content:center;
+      transition:all .15s ease;
     }
-    .pg-btn:disabled { opacity: .35; cursor: not-allowed; }
-    .pg-btn:not(:disabled):active { background: var(--item-hover); transform: scale(.95); }
-    .pg-info { font-size: .78rem; color: var(--text-secondary); font-weight: 600; }
+    .pg-btn:disabled { opacity:.35; cursor:not-allowed; }
+    .pg-btn:not(:disabled):active { background:var(--item-hover); transform:scale(.95); }
+    .pg-info { font-size:.78rem; color:var(--text-secondary); font-weight:600; }
 
     /* ── Badge ── */
-    .badge {
-      display: inline-flex; align-items: center; gap: 5px;
-      padding: 3px 10px; border-radius: 999px;
-      font-size: .7rem; font-weight: 700;
-    }
-    .badge::before { content: ''; width: 6px; height: 6px; border-radius: 50%; }
-    .badge-ok   { background: var(--badge-ok);   color: var(--badge-ok-c); }
-    .badge-ok::before   { background: var(--badge-ok-c); box-shadow: 0 0 5px var(--badge-ok-c); }
-    .badge-err  { background: var(--badge-err);  color: var(--badge-err-c); }
-    .badge-err::before  { background: var(--badge-err-c); }
-    .badge-warn { background: var(--badge-warn); color: var(--badge-warn-c); }
-    .badge-warn::before { background: var(--badge-warn-c); }
+    .badge { display:inline-flex; align-items:center; gap:5px; padding:3px 10px; border-radius:999px; font-size:.7rem; font-weight:700; }
+    .badge::before { content:''; width:6px; height:6px; border-radius:50%; }
+    .badge-ok   { background:var(--badge-ok);   color:var(--badge-ok-c); }
+    .badge-ok::before   { background:var(--badge-ok-c); box-shadow:0 0 5px var(--badge-ok-c); }
+    .badge-err  { background:var(--badge-err);  color:var(--badge-err-c); }
+    .badge-err::before  { background:var(--badge-err-c); }
+    .badge-warn { background:var(--badge-warn); color:var(--badge-warn-c); }
+    .badge-warn::before { background:var(--badge-warn-c); }
 
-    /* ── Scrollbar ── */
-    ::-webkit-scrollbar { width: 4px; }
-    ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: rgba(255,255,255,.15); border-radius: 2px; }
+    /* ── Toast ── */
+    .toast {
+      position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(100px);
+      background:rgba(30,30,40,.95); color:#fff; padding:10px 22px;
+      border-radius:999px; font-size:.82rem; font-weight:600;
+      box-shadow:0 8px 24px rgba(0,0,0,.4); z-index:9999;
+      transition:transform .3s cubic-bezier(.34,1.56,.64,1);
+      white-space:nowrap; backdrop-filter:blur(12px);
+    }
+    .toast.show { transform:translateX(-50%) translateY(0); }
+
+    ::-webkit-scrollbar { width:4px; }
+    ::-webkit-scrollbar-track { background:transparent; }
+    ::-webkit-scrollbar-thumb { background:rgba(255,255,255,.15); border-radius:2px; }
   </style>
 </head>
 <body>
 
-  <!-- ── Nav Bar ── -->
-  <nav class="nav-bar" role="tablist">
+  <!-- ── Nav Bar (bandwidth tab hidden for normal users until role loaded) ── -->
+  <nav class="nav-bar" role="tablist" id="nav-bar">
     <button class="nav-btn active" data-page="files" onclick="switchPage('files', this)">
       <i class="fa-solid fa-folder-open"></i>
       <span>Files</span>
     </button>
-    <button class="nav-btn" data-page="bandwidth" onclick="switchPage('bandwidth', this)">
+    <button class="nav-btn" data-page="bandwidth" id="nav-bw-btn" onclick="switchPage('bandwidth', this)" style="display:none;">
       <i class="fa-solid fa-satellite-dish"></i>
       <span>Bandwidth</span>
     </button>
@@ -525,6 +390,15 @@
       </div>
     </div>
 
+    <!-- Privilege notice (shown for owners/sudo) -->
+    <div class="privilege-notice" id="privilege-notice" style="display:none;">
+      <i class="fa-solid fa-shield-halved"></i>
+      <div class="privilege-notice-text">
+        <h4 id="privilege-title">Privileged Access</h4>
+        <p>Bandwidth limits do not apply to your account. You have unrestricted access.</p>
+      </div>
+    </div>
+
     <div id="files-loader" class="loader">
       <div class="loader-ring"></div>
       <span>Loading files…</span>
@@ -549,7 +423,7 @@
     </div>
   </div>
 
-  <!-- ═══════════ BANDWIDTH PAGE ═══════════ -->
+  <!-- ═══════════ BANDWIDTH PAGE (privileged only) ═══════════ -->
   <div class="page" id="page-bandwidth">
     <div class="sec-header">
       <div class="sec-title">
@@ -574,14 +448,13 @@
           <div class="bw-card-pct" id="g-pct-twa">0%</div>
           <div class="reset-chip"><i class="fa-solid fa-rotate"></i><span id="g-reset-twa">—</span></div>
         </div>
-
-        <!-- Per-user -->
+        <!-- Per-user (system-wide config) -->
         <div class="bw-card user">
-          <div class="bw-card-lbl"><i class="fa-solid fa-user-shield"></i> Your Limit</div>
-          <div class="bw-card-val" id="u-used-twa">—</div>
-          <div class="bw-card-sub" id="u-sub-twa">of — total</div>
+          <div class="bw-card-lbl"><i class="fa-solid fa-users"></i> Per-User Limit</div>
+          <div class="bw-card-val" id="u-config-val">—</div>
+          <div class="bw-card-sub" id="u-config-sub">system setting</div>
           <div class="mini-bar"><div class="mini-bar-fill user" id="u-bar-twa" style="width:0%"></div></div>
-          <div class="bw-card-pct user" id="u-pct-twa">0%</div>
+          <div class="bw-card-pct user" id="u-pct-twa">—</div>
           <div class="reset-chip"><i class="fa-solid fa-rotate"></i><span id="u-reset-twa">—</span></div>
         </div>
       </div>
@@ -604,10 +477,10 @@
         </div>
         <div class="info-row">
           <span class="ir-label">
-            <span class="ir-icon" style="background:rgba(167,139,250,.15)"><i class="fa-solid fa-user" style="color:#a78bfa"></i></span>
-            Your Remaining
+            <span class="ir-icon" style="background:rgba(167,139,250,.15)"><i class="fa-solid fa-users" style="color:#a78bfa"></i></span>
+            Users Over Limit
           </span>
-          <span class="ir-value" id="u-rem-twa" style="color:#a78bfa">—</span>
+          <span class="ir-value" id="bw-users-over" style="color:#ff6b6b">—</span>
         </div>
         <div class="info-row">
           <span class="ir-label">
@@ -622,6 +495,13 @@
             BW Enforcement
           </span>
           <span class="badge badge-ok" id="bw-mode-twa">Active</span>
+        </div>
+        <div class="info-row">
+          <span class="ir-label">
+            <span class="ir-icon" style="background:rgba(102,126,234,.15)"><i class="fa-solid fa-user-shield" style="color:#a78bfa"></i></span>
+            Per-User BW
+          </span>
+          <span class="badge badge-ok" id="user-bw-mode-twa">Active</span>
         </div>
       </div>
 
@@ -649,6 +529,7 @@
         <div class="profile-info">
           <div class="profile-name" id="p-name">—</div>
           <div class="profile-id" id="p-id">ID: —</div>
+          <span class="role-badge user" id="p-role-badge">User</span>
         </div>
       </div>
 
@@ -659,6 +540,13 @@
             Username
           </span>
           <span class="ir-value" id="p-username">—</span>
+        </div>
+        <div class="info-row">
+          <span class="ir-label">
+            <span class="ir-icon" style="background:rgba(167,139,250,.15)"><i class="fa-solid fa-shield-halved" style="color:#a78bfa"></i></span>
+            Role
+          </span>
+          <span class="ir-value" id="p-role">User</span>
         </div>
         <div class="info-row">
           <span class="ir-label">
@@ -697,38 +585,55 @@
     </div>
   </div>
 
+  <!-- Toast notification -->
+  <div class="toast" id="toast"></div>
+
   <script>
-  // ── Telegram Web App init ───────────────────────────────────
+  // ── Telegram Web App init ─────────────────────────────────────
   const tg = window.Telegram?.WebApp;
   if (tg) {
     tg.ready();
     tg.expand();
-    // Sync Telegram theme
-    document.documentElement.style.setProperty('--tg-bg', tg.themeParams.bg_color || '#0f0c29');
-    document.documentElement.style.setProperty('--tg-sec-bg', tg.themeParams.secondary_bg_color || '#302b63');
-    document.documentElement.style.setProperty('--tg-text', tg.themeParams.text_color || '#ffffff');
-    document.documentElement.style.setProperty('--tg-hint', tg.themeParams.hint_color || 'rgba(255,255,255,.55)');
-    document.documentElement.style.setProperty('--tg-btn', tg.themeParams.button_color || '#667eea');
+    document.documentElement.style.setProperty('--tg-bg',     tg.themeParams.bg_color            || '#0f0c29');
+    document.documentElement.style.setProperty('--tg-sec-bg', tg.themeParams.secondary_bg_color  || '#302b63');
+    document.documentElement.style.setProperty('--tg-text',   tg.themeParams.text_color          || '#ffffff');
+    document.documentElement.style.setProperty('--tg-hint',   tg.themeParams.hint_color          || 'rgba(255,255,255,.55)');
+    document.documentElement.style.setProperty('--tg-btn',    tg.themeParams.button_color        || '#667eea');
   }
 
   const INIT_DATA = tg?.initData || '';
 
-  // ── Page navigation ─────────────────────────────────────────
+  // ── Role state ────────────────────────────────────────────────
+  let userRole        = 'user';
+  let isPrivileged    = false;
+  let userAllowed     = true;
+  let currentPage     = 1;
+  let totalPages      = 1;
+
+  // ── Page navigation ───────────────────────────────────────────
   function switchPage(name, btn) {
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
     document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
     document.getElementById('page-' + name).classList.add('active');
     btn.classList.add('active');
     if (name === 'bandwidth') loadBandwidth();
-    if (name === 'profile') loadProfile();
+    if (name === 'profile')   loadProfile();
   }
 
-  // ── Helpers ────────────────────────────────────────────────
+  // ── Toast helper ─────────────────────────────────────────────
+  let _toastTimer = null;
+  function showToast(msg, duration = 2000) {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    if (_toastTimer) clearTimeout(_toastTimer);
+    _toastTimer = setTimeout(() => el.classList.remove('show'), duration);
+  }
+
+  // ── Helpers ───────────────────────────────────────────────────
   function fmtCountdown(sec) {
     if (sec <= 0) return 'Soon';
-    const d = Math.floor(sec / 86400);
-    const h = Math.floor((sec % 86400) / 3600);
-    const m = Math.floor((sec % 3600) / 60);
+    const d = Math.floor(sec / 86400), h = Math.floor((sec % 86400) / 3600), m = Math.floor((sec % 3600) / 60);
     if (d > 0) return `${d}d ${h}h`;
     if (h > 0) return `${h}h ${m}m`;
     return `${m}m`;
@@ -745,19 +650,35 @@
     if (el) el.textContent = val ?? '—';
   }
 
-  function getFileIcon(fileType, mimeType) {
-    if (fileType === 'video')  return ['fi-video', 'fa-solid fa-film'];
-    if (fileType === 'audio')  return ['fi-audio', 'fa-solid fa-music'];
-    if (fileType === 'image')  return ['fi-img',   'fa-solid fa-image'];
-    return ['fi-doc', 'fa-solid fa-file'];
+  function escHtml(str) {
+    return String(str).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
   }
 
-  // ── Files Page ─────────────────────────────────────────────
-  let currentPage = 1;
-  let totalPages  = 1;
-  let userAllowed = true;
-  let _filesLoaded = false;
+  function getFileIconInfo(fileType) {
+    if (fileType === 'video')  return { cls:'fi-video', icon:'fa-solid fa-film',   cardCls:'ft-video' };
+    if (fileType === 'audio')  return { cls:'fi-audio', icon:'fa-solid fa-music',  cardCls:'ft-audio' };
+    if (fileType === 'image')  return { cls:'fi-img',   icon:'fa-solid fa-image',  cardCls:'ft-image' };
+    return { cls:'fi-doc', icon:'fa-solid fa-file', cardCls:'ft-doc' };
+  }
 
+  // ── Role display helpers ──────────────────────────────────────
+  function updateRoleUI(role, privileged) {
+    userRole     = role;
+    isPrivileged = privileged;
+
+    // Show/hide bandwidth tab for privileged users only
+    const bwBtn = document.getElementById('nav-bw-btn');
+    if (bwBtn) bwBtn.style.display = privileged ? '' : 'none';
+
+    // Show privilege notice on files page if privileged
+    const noticeEl   = document.getElementById('privilege-notice');
+    const titleEl    = document.getElementById('privilege-title');
+    if (noticeEl) noticeEl.style.display = privileged ? '' : 'none';
+    if (titleEl && role === 'owner') titleEl.textContent = '👑 Owner Access — Unlimited Bandwidth';
+    if (titleEl && role === 'sudo')  titleEl.textContent = '🔑 Sudo Access — Unlimited Bandwidth';
+  }
+
+  // ── Files Page ────────────────────────────────────────────────
   async function loadFiles(page = 1) {
     if (!INIT_DATA) {
       document.getElementById('files-loader').style.display = 'none';
@@ -779,10 +700,14 @@
       if (!d.ok) throw new Error(d.error || 'unknown error');
 
       document.getElementById('files-loader').style.display = 'none';
+
+      // Update role-based UI after first load
+      updateRoleUI(d.role || 'user', d.is_privileged || false);
+
       userAllowed = d.allowed !== false;
 
-      // Show blocked banner if over limit
-      document.getElementById('blocked-banner').style.display = userAllowed ? 'none' : '';
+      // Show/hide banners
+      document.getElementById('blocked-banner').style.display   = (!userAllowed && !isPrivileged) ? '' : 'none';
 
       if (!d.files || d.files.length === 0) {
         document.getElementById('files-empty').style.display = '';
@@ -791,35 +716,52 @@
 
       currentPage = d.page;
       totalPages  = d.pages;
-
       setEl('files-count', `${d.total} file${d.total !== 1 ? 's' : ''}`);
 
       const list = document.getElementById('file-list');
       d.files.forEach(file => {
-        const [iconClass, iconTag] = getFileIcon(file.file_type, file.mime_type);
+        const { cls, icon, cardCls } = getFileIconInfo(file.file_type);
         const isStreamable = ['video', 'audio'].includes(file.file_type);
         const card = document.createElement('div');
-        card.className = 'file-card';
+        card.className = `file-card ${cardCls}`;
+
+        const streamBtn = (isStreamable && (userAllowed || isPrivileged)) ? `
+          <button class="fa-btn fa-stream" onclick="openLink('${escHtml(file.stream_url)}')" title="Stream">
+            <i class="fa-solid fa-play"></i> Stream
+          </button>
+        ` : '';
+
+        const dlBtn = (userAllowed || isPrivileged) ? `
+          <button class="fa-btn fa-dl" onclick="openLink('${escHtml(file.download_url)}')" title="Download">
+            <i class="fa-solid fa-cloud-arrow-down"></i> DL
+          </button>
+        ` : '';
+
+        const shareBtn = file.share_url ? `
+          <button class="fa-btn fa-share" onclick="shareFile('${escHtml(file.share_url)}', '${escHtml(file.file_name)}')" title="Share">
+            <i class="fa-solid fa-share-nodes"></i> Share
+          </button>
+        ` : '';
+
+        const copyBtn = `
+          <button class="fa-btn fa-copy" onclick="copyLink('${escHtml(file.share_url || file.download_url)}')" title="Copy Link">
+            <i class="fa-regular fa-copy"></i> Copy
+          </button>
+        `;
+
         card.innerHTML = `
-          <div class="file-icon ${iconClass}"><i class="${iconTag}"></i></div>
-          <div class="file-info">
-            <div class="file-name">${escHtml(file.file_name)}</div>
-            <div class="file-meta">
-              <span class="file-type-badge">${file.file_type}</span>
-              <span>${file.file_size_fmt}</span>
+          <div class="file-card-top">
+            <div class="file-icon ${cls}"><i class="${icon}"></i></div>
+            <div class="file-info">
+              <div class="file-name" title="${escHtml(file.file_name)}">${escHtml(truncate(file.file_name, 36))}</div>
+              <div class="file-meta">
+                <span class="file-type-badge">${escHtml(file.file_type)}</span>
+                <span>${escHtml(file.file_size_fmt)}</span>
+              </div>
             </div>
           </div>
           <div class="file-actions">
-            ${isStreamable && userAllowed ? `
-              <button class="fa-btn fa-stream" onclick="openStream('${file.stream_url}', '${escHtml(file.file_name)}')" title="Stream">
-                <i class="fa-solid fa-play"></i>
-              </button>
-            ` : ''}
-            ${userAllowed ? `
-              <button class="fa-btn fa-dl" onclick="downloadFile('${file.download_url}')" title="Download">
-                <i class="fa-solid fa-cloud-arrow-down"></i>
-              </button>
-            ` : ''}
+            ${streamBtn}${dlBtn}${shareBtn}${copyBtn}
           </div>
         `;
         list.appendChild(card);
@@ -840,30 +782,50 @@
     }
   }
 
-  function openStream(url, name) {
-    if (!userAllowed) {
-      tg?.showAlert('Your bandwidth limit has been reached. Streaming is temporarily blocked.');
+  function truncate(str, maxLen) {
+    if (!str) return '';
+    return str.length > maxLen ? str.substring(0, maxLen - 1) + '…' : str;
+  }
+
+  function openLink(url) {
+    if (!userAllowed && !isPrivileged) {
+      tg?.showAlert('⛔ Your bandwidth limit has been reached. Streaming and downloads are temporarily blocked.\n\nContact an admin to reset your quota.');
       return;
     }
     tg?.openLink(url, { try_instant_view: false });
   }
 
-  function downloadFile(url) {
-    if (!userAllowed) {
-      tg?.showAlert('Your bandwidth limit has been reached. Downloads are temporarily blocked.');
-      return;
+  function shareFile(shareUrl, fileName) {
+    if (tg && tg.version >= '6.1') {
+      // Use Telegram share sheet if available
+      tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent('📂 ' + fileName)}`);
+    } else if (navigator.share) {
+      navigator.share({ title: fileName, url: shareUrl }).catch(() => {
+        copyLink(shareUrl);
+      });
+    } else {
+      copyLink(shareUrl);
     }
-    tg?.openLink(url);
   }
 
-  function escHtml(str) {
-    return String(str).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  function copyLink(url) {
+    if (!url) return;
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(url).then(() => showToast('✅ Link copied!')).catch(() => _fallbackCopy(url));
+    } else {
+      _fallbackCopy(url);
+    }
   }
 
-  // ── Bandwidth Page ─────────────────────────────────────────
-  let _bwTimer = null;
-  let _bwResetEnd = null;
+  function _fallbackCopy(url) {
+    const ta = document.createElement('textarea');
+    ta.value = url; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.focus(); ta.select();
+    try { document.execCommand('copy'); showToast('✅ Link copied!'); } catch(e) { showToast('❌ Could not copy link'); }
+    document.body.removeChild(ta);
+  }
 
+  // ── Bandwidth Page (privileged only) ─────────────────────────
   async function loadBandwidth() {
     document.getElementById('bw-loader').style.display  = '';
     document.getElementById('bw-content').style.display = 'none';
@@ -871,61 +833,45 @@
 
     try {
       // Fetch global BW
-      const gRes = await fetch('/api/twa/bandwidth');
+      const gRes  = await fetch('/api/bandwidth/full');
       const gData = await gRes.json();
-
-      // Fetch user BW (requires auth)
-      let uData = null;
-      if (INIT_DATA) {
-        try {
-          const aRes = await fetch('/api/twa/auth', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ initData: INIT_DATA }),
-          });
-          const aBody = await aRes.json();
-          if (aBody.ok) uData = aBody.bw_info;
-        } catch(e) {}
-      }
 
       document.getElementById('bw-loader').style.display  = 'none';
       document.getElementById('bw-content').style.display = '';
 
-      // Global card
-      const gPct = gData.pct ?? 0;
-      setEl('g-used-twa', gData.formatted?.used   ?? '—');
-      setEl('g-sub-twa',  `of ${gData.formatted?.limit ?? '—'} total`);
-      setEl('g-pct-twa',  gPct + '%');
-      const gBar = document.getElementById('g-bar-twa');
-      if (gBar) { gBar.style.width = gPct + '%'; setBarClass(gBar, gPct, 'global'); }
-      const gPctEl = document.getElementById('g-pct-twa');
-      if (gPctEl) { gPctEl.className = 'bw-card-pct' + (gPct > 90 ? ' crit' : gPct > 70 ? ' warn' : ''); }
-      setEl('g-limit-twa',  gData.formatted?.limit     ?? '—');
-      setEl('g-rem-twa',    gData.formatted?.remaining ?? '—');
+      const gPct = gData.percentage ?? 0;
+      const fmtG = gData.formatted || {};
+
+      setEl('g-used-twa',      fmtG.total_bandwidth ?? '—');
+      setEl('g-sub-twa',       `of ${fmtG.limit ?? '—'} total`);
+      setEl('g-pct-twa',       gPct + '%');
+      setEl('g-limit-twa',     fmtG.limit            ?? '—');
+      setEl('g-rem-twa',       fmtG.remaining        ?? '—');
       setEl('bw-reset-days-twa', `${gData.days_remaining ?? '—'} days`);
+      setEl('g-reset-twa',     `${gData.days_remaining ?? '—'}d`);
+      setEl('bw-users-over',   gData.users_over_limit ?? '0');
 
-      // Reset countdown
-      if (gData.days_remaining != null) {
-        _bwResetEnd = Math.floor(Date.now() / 1000) + (gData.days_remaining * 86400);
-        setEl('g-reset-twa', fmtCountdown(gData.days_remaining * 86400));
+      const gBar = document.getElementById('g-bar-twa');
+      if (gBar) { gBar.style.width = Math.min(gPct, 100) + '%'; setBarClass(gBar, gPct, 'global'); }
+      const gPctEl = document.getElementById('g-pct-twa');
+      if (gPctEl) gPctEl.className = 'bw-card-pct' + (gPct > 90 ? ' crit' : gPct > 70 ? ' warn' : '');
+
+      // Per-user limit config
+      setEl('u-config-val',  fmtG.user_limit ?? '—');
+      setEl('u-config-sub',  'per-user monthly cap');
+      setEl('u-pct-twa',     gData.user_bw_mode ? 'Active' : 'Disabled');
+      setEl('u-reset-twa',   `${gData.days_remaining ?? '—'}d`);
+
+      // BW mode badges
+      const bwModeEl = document.getElementById('bw-mode-twa');
+      if (bwModeEl) {
+        bwModeEl.className = `badge ${gData.bandwidth_mode ? 'badge-ok' : 'badge-err'}`;
+        bwModeEl.textContent = gData.bandwidth_mode ? 'Active' : 'Disabled';
       }
-
-      // User card
-      if (uData) {
-        const uPct = uData.pct ?? 0;
-        setEl('u-used-twa', uData.formatted?.used      ?? '—');
-        setEl('u-sub-twa',  `of ${uData.formatted?.limit ?? '—'} total`);
-        setEl('u-pct-twa',  uPct + '%');
-        setEl('u-rem-twa',  uData.formatted?.remaining ?? '—');
-        const uBar = document.getElementById('u-bar-twa');
-        if (uBar) { uBar.style.width = uPct + '%'; setBarClass(uBar, uPct, 'user'); }
-        const uPctEl = document.getElementById('u-pct-twa');
-        if (uPctEl) { uPctEl.className = 'bw-card-pct user' + (uPct > 90 ? ' crit' : uPct > 70 ? ' warn' : ''); }
-        setEl('u-reset-twa', `${uData.days_remaining ?? '—'}d left`);
-      } else {
-        setEl('u-used-twa', 'N/A');
-        setEl('u-sub-twa',  'Login required');
-        setEl('u-reset-twa', '—');
+      const ubwModeEl = document.getElementById('user-bw-mode-twa');
+      if (ubwModeEl) {
+        ubwModeEl.className = `badge ${gData.user_bw_mode ? 'badge-ok' : 'badge-err'}`;
+        ubwModeEl.textContent = gData.user_bw_mode ? 'Active' : 'Disabled';
       }
 
     } catch(err) {
@@ -934,7 +880,7 @@
     }
   }
 
-  // ── Profile Page ───────────────────────────────────────────
+  // ── Profile Page ──────────────────────────────────────────────
   async function loadProfile() {
     document.getElementById('profile-loader').style.display  = '';
     document.getElementById('profile-content').style.display = 'none';
@@ -954,15 +900,33 @@
       document.getElementById('profile-loader').style.display  = 'none';
       document.getElementById('profile-content').style.display = '';
 
-      const user   = data.user || {};
+      const user   = data.user   || {};
       const bwInfo = data.bw_info || {};
+      const role   = data.role   || 'user';
+      const priv   = data.is_privileged || false;
       const fname  = [user.first_name, user.last_name].filter(Boolean).join(' ') || 'Telegram User';
 
       setEl('p-name',     fname);
       setEl('p-id',       `ID: ${user.id || '—'}`);
       setEl('p-username', user.username ? `@${user.username}` : 'N/A');
+      setEl('p-role',     role === 'owner' ? '👑 Owner' : role === 'sudo' ? '🔑 Sudo' : '👤 User');
 
-      if (bwInfo.formatted) {
+      // Role badge
+      const rbEl = document.getElementById('p-role-badge');
+      if (rbEl) {
+        rbEl.className = `role-badge ${role}`;
+        rbEl.textContent = role === 'owner' ? '👑 Owner' : role === 'sudo' ? '🔑 Sudo' : '👤 User';
+      }
+
+      // Update global role state too
+      updateRoleUI(role, priv);
+
+      if (bwInfo.unlimited || priv) {
+        setEl('p-bw-used',  'N/A — Privileged');
+        setEl('p-bw-rem',   '∞ Unlimited');
+        setEl('p-bw-limit', 'Unlimited');
+        setEl('p-bw-pct',   'No Limit');
+      } else if (bwInfo.formatted) {
         setEl('p-bw-used',  bwInfo.formatted.used);
         setEl('p-bw-rem',   bwInfo.formatted.remaining);
         setEl('p-bw-limit', bwInfo.formatted.limit);
@@ -975,7 +939,7 @@
     }
   }
 
-  // ── Initial load ───────────────────────────────────────────
+  // ── Initial load ──────────────────────────────────────────────
   loadFiles(1);
   </script>
 </body>
